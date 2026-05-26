@@ -8,6 +8,7 @@ PASS="Trustno1981!"
 COOKIE="/tmp/ac_session.txt"
 LOG="/tmp/apexcore_setup.log"
 REPORT=""
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 ok()  { echo "  ✅ $1"; REPORT="${REPORT}\n✅ $1"; }
 err() { echo "  ❌ $1"; REPORT="${REPORT}\n❌ $1"; }
@@ -108,120 +109,51 @@ fi
 echo ""
 echo "[ 5/6 ] Workflows..."
 
-# Bestehende Workflows abrufen
 EXISTING=$(curl -s -b "$COOKIE" "$N8N/rest/workflows" 2>/dev/null | python3 -c "
 import sys,json
 try:
   data=json.load(sys.stdin)
   items=data.get('data',data) if isinstance(data,dict) else data
-  for w in (items if isinstance(items,list) else []):
-    print(w.get('name',''))
+  for w in (items if isinstance(items,list) else []): print(w.get('name',''))
 except: pass
 " 2>/dev/null)
 
-create_workflow() {
+create_workflow_file() {
   local NAME="$1"
-  local JSON="$2"
+  local FILE="$2"
   if echo "$EXISTING" | grep -qF "$NAME"; then
     inf "Workflow '$NAME' bereits vorhanden — überspringe"
     return
   fi
+  if [ ! -f "$FILE" ]; then
+    err "Workflow-Datei nicht gefunden: $FILE"
+    return
+  fi
+  # Credential IDs + Port in JSON einsetzen
+  local JSON
+  JSON=$(sed \
+    -e "s/__ANTHROPIC_ID__/$ANTHROPIC_ID/g" \
+    -e "s/__NOTION_ID__/$NOTION_ID/g" \
+    -e "s/__NOTION_DB_ID__/NOTION_DB_ID_EINTRAGEN/g" \
+    "$FILE")
   RESP=$(curl -s -b "$COOKIE" -X POST "$N8N/rest/workflows" \
     -H "Content-Type: application/json" \
-    -d "$JSON" 2>/dev/null)
+    --data-binary "$JSON" 2>/dev/null)
   WF_ID=$(echo "$RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('data',d).get('id',''))" 2>/dev/null)
-  if [ -n "$WF_ID" ] && [ "$WF_ID" != "None" ]; then
+  if [ -n "$WF_ID" ] && [ "$WF_ID" != "None" ] && [ "$WF_ID" != "" ]; then
     ok "Workflow '$NAME' erstellt (ID: $WF_ID)"
-    # Aktivieren
     curl -s -b "$COOKIE" -X PATCH "$N8N/rest/workflows/$WF_ID" \
       -H "Content-Type: application/json" \
       -d '{"active":true}' > /dev/null 2>&1
   else
-    err "Workflow '$NAME' fehlgeschlagen: $(echo $RESP | head -c 120)"
+    err "Workflow '$NAME' fehlgeschlagen: $(echo $RESP | head -c 150)"
   fi
 }
 
-# Workflow 1: Claude Webhook
-create_workflow "Claude Webhook" "{
-  \"name\":\"Claude Webhook\",
-  \"active\":true,
-  \"settings\":{\"executionOrder\":\"v1\"},
-  \"nodes\":[
-    {\"parameters\":{\"httpMethod\":\"POST\",\"path\":\"claude\",\"responseMode\":\"responseNode\",\"options\":{}},
-     \"id\":\"wh01\",\"name\":\"Webhook\",\"type\":\"n8n-nodes-base.webhook\",\"typeVersion\":2,\"position\":[250,300]},
-    {\"parameters\":{
-       \"method\":\"POST\",\"url\":\"https://api.anthropic.com/v1/messages\",
-       \"sendHeaders\":true,
-       \"headerParameters\":{\"parameters\":[
-         {\"name\":\"anthropic-version\",\"value\":\"2023-06-01\"},
-         {\"name\":\"x-api-key\",\"value\":\"={{ \\\$credentials.anthropicApi.apiKey }}\"}
-       ]},
-       \"sendBody\":true,\"contentType\":\"json\",
-       \"specifyBody\":\"json\",
-       \"jsonBody\":\"={ \\\\\\\"model\\\\\\\": \\\\\\\"claude-opus-4-5-20251101\\\\\\\", \\\\\\\"max_tokens\\\\\\\": 2048, \\\\\\\"messages\\\\\\\": [{ \\\\\\\"role\\\\\\\": \\\\\\\"user\\\\\\\", \\\\\\\"content\\\\\\\": \\\\\\\"{{ \\\$json.body.message }}\\\\\\\" }] }\",
-       \"options\":{}},
-     \"id\":\"http01\",\"name\":\"Claude API\",\"type\":\"n8n-nodes-base.httpRequest\",\"typeVersion\":4.2,\"position\":[500,300],
-     \"credentials\":{\"anthropicApi\":{\"id\":\"$ANTHROPIC_ID\",\"name\":\"Anthropic (Claude)\"}}},
-    {\"parameters\":{\"respondWith\":\"json\",\"responseBody\":\"={ \\\\\\\"response\\\\\\\": \\\\\\\"{{ \\\$json.content[0].text }}\\\\\\\" }\",\"options\":{}},
-     \"id\":\"resp01\",\"name\":\"Respond\",\"type\":\"n8n-nodes-base.respondToWebhook\",\"typeVersion\":1.1,\"position\":[750,300]}
-  ],
-  \"connections\":{
-    \"Webhook\":{\"main\":[[{\"node\":\"Claude API\",\"type\":\"main\",\"index\":0}]]},
-    \"Claude API\":{\"main\":[[{\"node\":\"Respond\",\"type\":\"main\",\"index\":0}]]}
-  }
-}"
-
-# Workflow 2: Notion Logger
-create_workflow "Notion Logger" "{
-  \"name\":\"Notion Logger\",
-  \"active\":true,
-  \"settings\":{\"executionOrder\":\"v1\"},
-  \"nodes\":[
-    {\"parameters\":{\"httpMethod\":\"POST\",\"path\":\"log\",\"responseMode\":\"responseNode\",\"options\":{}},
-     \"id\":\"wh02\",\"name\":\"Webhook\",\"type\":\"n8n-nodes-base.webhook\",\"typeVersion\":2,\"position\":[250,300]},
-    {\"parameters\":{
-       \"resource\":\"databasePage\",\"operation\":\"create\",
-       \"databaseId\":{\"__rl\":true,\"value\":\"NOTION_DB_ID_HIER_EINTRAGEN\",\"mode\":\"id\"},
-       \"title\":\"={{ \\\$json.body.title || 'Log ' + new Date().toISOString() }}\",
-       \"propertiesUi\":{\"propertyValues\":[]},
-       \"blockUi\":{\"blockValues\":[{\"type\":\"paragraph\",\"paragraph\":\"={{ \\\$json.body.content || '' }}\"}]},
-       \"options\":{}},
-     \"id\":\"notion02\",\"name\":\"Notion\",\"type\":\"n8n-nodes-base.notion\",\"typeVersion\":2.2,\"position\":[500,300],
-     \"credentials\":{\"notionApi\":{\"id\":\"$NOTION_ID\",\"name\":\"Notion API\"}}},
-    {\"parameters\":{\"respondWith\":\"json\",\"responseBody\":\"={ \\\\\\\"status\\\\\\\": \\\\\\\"logged\\\\\\\" }\",\"options\":{}},
-     \"id\":\"resp02\",\"name\":\"Respond\",\"type\":\"n8n-nodes-base.respondToWebhook\",\"typeVersion\":1.1,\"position\":[750,300]}
-  ],
-  \"connections\":{
-    \"Webhook\":{\"main\":[[{\"node\":\"Notion\",\"type\":\"main\",\"index\":0}]]},
-    \"Notion\":{\"main\":[[{\"node\":\"Respond\",\"type\":\"main\",\"index\":0}]]}
-  }
-}"
-
-# Workflow 3: Heartbeat Monitor
-create_workflow "Heartbeat Monitor" "{
-  \"name\":\"Heartbeat Monitor\",
-  \"active\":true,
-  \"settings\":{\"executionOrder\":\"v1\"},
-  \"nodes\":[
-    {\"parameters\":{\"rule\":{\"interval\":[{\"field\":\"hours\",\"hoursInterval\":12}]}},
-     \"id\":\"sched03\",\"name\":\"Every 12h\",\"type\":\"n8n-nodes-base.scheduleTrigger\",\"typeVersion\":1.1,\"position\":[250,300]},
-    {\"parameters\":{\"jsCode\":\"const svcs=[{name:'n8n',url:'http://localhost:5679'},{name:'Hermes',url:'http://localhost:8787'},{name:'Ollama',url:'http://localhost:3000'},{name:'Paperclip',url:'http://localhost:52309'},{name:'Dashboard',url:'http://localhost:3011'}];const r=[];for(const s of svcs){try{await this.helpers.httpRequest({method:'GET',url:s.url,timeout:5000});r.push({name:s.name,status:'online'});}catch(e){r.push({name:s.name,status:'offline'});}}const online=r.filter(x=>x.status==='online').length;const summary=r.map(x=>(x.status==='online'?'✅ ':'❌ ')+x.name).join(' | ');return [{json:{services:r,online,total:r.length,summary,ts:new Date().toISOString()}}];\"},
-     \"id\":\"code03\",\"name\":\"Check All\",\"type\":\"n8n-nodes-base.code\",\"typeVersion\":2,\"position\":[500,300]},
-    {\"parameters\":{
-       \"resource\":\"databasePage\",\"operation\":\"create\",
-       \"databaseId\":{\"__rl\":true,\"value\":\"NOTION_DB_ID_HIER_EINTRAGEN\",\"mode\":\"id\"},
-       \"title\":\"={{ 'Heartbeat ' + \\\$json.ts.substring(0,10) + ' — ' + \\\$json.online + '/' + \\\$json.total }}\",
-       \"propertiesUi\":{\"propertyValues\":[]},
-       \"blockUi\":{\"blockValues\":[{\"type\":\"paragraph\",\"paragraph\":\"={{ \\\$json.summary }}\"}]},
-       \"options\":{}},
-     \"id\":\"notion03\",\"name\":\"Log Notion\",\"type\":\"n8n-nodes-base.notion\",\"typeVersion\":2.2,\"position\":[750,300],
-     \"credentials\":{\"notionApi\":{\"id\":\"$NOTION_ID\",\"name\":\"Notion API\"}}}
-  ],
-  \"connections\":{
-    \"Every 12h\":{\"main\":[[{\"node\":\"Check All\",\"type\":\"main\",\"index\":0}]]},
-    \"Check All\":{\"main\":[[{\"node\":\"Log Notion\",\"type\":\"main\",\"index\":0}]]}
-  }
-}"
+WF_DIR="$SCRIPT_DIR/n8n-workflows"
+create_workflow_file "Claude Webhook"    "$WF_DIR/01-claude-webhook.json"
+create_workflow_file "Notion Logger"     "$WF_DIR/02-notion-logger.json"
+create_workflow_file "Heartbeat Monitor" "$WF_DIR/03-heartbeat-monitor.json"
 
 # ─── 6. DASHBOARD DEPLOYEN ────────────────────
 echo ""

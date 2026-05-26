@@ -1,0 +1,65 @@
+{
+  "name": "Claude Webhook",
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "claude",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "wh-claude-01",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "x-api-key", "value": "={{ $credentials.anthropicApi.apiKey }}" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-opus-4-5-20251101', max_tokens: 2048, messages: [{ role: 'user', content: $json.body.message }] }) }}",
+        "options": {}
+      },
+      "id": "http-claude-01",
+      "name": "Claude API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 300],
+      "credentials": {
+        "anthropicApi": {
+          "id": "__ANTHROPIC_ID__",
+          "name": "Anthropic (Claude)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ response: $json.content[0].text, model: $json.model }) }}",
+        "options": {}
+      },
+      "id": "resp-claude-01",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [750, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Claude API", "type": "main", "index": 0 }]] },
+    "Claude API": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
+  }
+}
