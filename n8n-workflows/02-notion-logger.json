@@ -1,0 +1,69 @@
+{
+  "name": "Notion Logger",
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "log",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "wh-notion-01",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "create",
+        "databaseId": {
+          "__rl": true,
+          "value": "__NOTION_DB_ID__",
+          "mode": "id"
+        },
+        "title": "={{ $json.body.title || 'Log ' + new Date().toISOString() }}",
+        "propertiesUi": { "propertyValues": [] },
+        "blockUi": {
+          "blockValues": [
+            {
+              "type": "paragraph",
+              "paragraph": "={{ $json.body.content || '' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "notion-log-01",
+      "name": "Notion Create",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [500, 300],
+      "credentials": {
+        "notionApi": {
+          "id": "__NOTION_ID__",
+          "name": "Notion API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'logged', page_id: $json.id }) }}",
+        "options": {}
+      },
+      "id": "resp-notion-01",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [750, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Notion Create", "type": "main", "index": 0 }]] },
+    "Notion Create": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
+  }
+}
