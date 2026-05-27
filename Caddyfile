@@ -1,7 +1,6 @@
 # ApexCore — Caddy Reverse Proxy
-# Pfad auf VPS: /opt/openclaw/reverse-proxy/Caddyfile
-# TLS: automatisch via Let's Encrypt (Produktion)
-# VORAUSSETZUNG: DNS A-Records für alle Subdomains auf 76.13.138.73
+# VPS: /opt/openclaw/reverse-proxy/Caddyfile
+# 172.17.0.1 = Docker bridge gateway (VPS host from inside container)
 
 {
     email oc@apexcore.group
@@ -11,7 +10,7 @@
 oc.apexcore.group {
     handle /n8n/* {
         uri strip_prefix /n8n
-        reverse_proxy 127.0.0.1:5678
+        reverse_proxy 172.17.0.1:5678
     }
     handle {
         reverse_proxy http://openclaw-fresh:56364 {
@@ -33,12 +32,12 @@ oc-staging.apexcore.group {
 
 # ─── ApexCore Services ─────────────────────────────────────────────────────
 openwebui.apexcore.group {
-    reverse_proxy 127.0.0.1:3000
+    reverse_proxy 172.17.0.1:3000
     encode gzip
 }
 
 n8n.apexcore.group {
-    reverse_proxy 127.0.0.1:5678 {
+    reverse_proxy 172.17.0.1:5678 {
         header_up Host {host}
         header_up X-Real-IP {remote_host}
         header_up X-Forwarded-For {remote_host}
@@ -48,16 +47,16 @@ n8n.apexcore.group {
 }
 
 hermes.apexcore.group {
-    reverse_proxy 127.0.0.1:32772
+    reverse_proxy 172.17.0.1:32772
     encode gzip
 }
 
 paperclip.apexcore.group {
-    reverse_proxy 127.0.0.1:52309
+    reverse_proxy 172.17.0.1:52309
     encode gzip
 }
 
 dashboard.apexcore.group {
-    reverse_proxy 127.0.0.1:9090
+    reverse_proxy 172.17.0.1:9090
     encode gzip
 }
