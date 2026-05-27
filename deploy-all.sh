@@ -104,6 +104,43 @@ else
   done
 fi
 
+# ─── 5b) Product 4 — Bitcoin Tax Kit ─────────────────────────────────────────
+h "5b) Product 4 — Bitcoin Tax & Reporting Kit"
+P4_BASE="/data/apex-core-central/output/product_4"
+P4_MD="$P4_BASE/markdown/bitcoin-tax-reporting-kit.md"
+P4_PDF="$P4_BASE/final/bitcoin-tax-reporting-kit.pdf"
+P4_WEB="/opt/apexcore-products/product_4"
+
+mkdir -p "$P4_BASE/markdown" "$P4_BASE/final" "$P4_WEB"
+
+# Deploy markdown + product page from repo
+curl -fsSL "$REPO/products/product_4/bitcoin-tax-reporting-kit.md" > "$P4_MD" && ok "Bitcoin Tax Kit markdown gespeichert"
+curl -fsSL "$REPO/products/product_4/index.html" > "$P4_WEB/index.html" && ok "Product 4 Seite deployed"
+
+# Install pandoc if needed and build PDF
+if ! command -v pandoc &>/dev/null; then
+  warn "pandoc nicht gefunden — installiere..."
+  apt-get update -qq && apt-get install -y -qq pandoc wkhtmltopdf 2>/dev/null && ok "pandoc installiert" || warn "pandoc Install fehlgeschlagen — PDF-Build übersprungen"
+fi
+
+# Deploy build-kit.sh script
+curl -fsSL "$REPO/scripts/build-kit.sh" > /usr/local/bin/build-kit.sh && chmod +x /usr/local/bin/build-kit.sh && ok "build-kit.sh installiert"
+
+# Build PDF
+if command -v pandoc &>/dev/null && [ -f "$P4_MD" ]; then
+  pandoc "$P4_MD" \
+    --pdf-engine=wkhtmltopdf \
+    --toc --toc-depth=2 \
+    -V margin-top=25mm -V margin-bottom=25mm \
+    -V margin-left=20mm -V margin-right=20mm \
+    -V fontsize=11pt -V papersize=a4 \
+    -o "$P4_PDF" 2>/var/log/apexcore-build.log && \
+    ok "PDF erzeugt: $P4_PDF ($(du -h "$P4_PDF" | cut -f1))" || \
+    warn "PDF-Build fehlgeschlagen — Log: /var/log/apexcore-build.log"
+else
+  warn "PDF-Build übersprungen (pandoc fehlt oder Markdown nicht gefunden)"
+fi
+
 # ─── 6) Notion Backup Cronjob ─────────────────────────────────────────────────
 h "6) Notion Backup Cronjob"
 CRON_LINE="30 2 * * * /root/scripts/notion-backup.sh >> /root/logs/notion-backup.log 2>&1"

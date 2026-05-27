@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bitcoin Tax & Reporting Kit — ApexCore</title>
+  <meta name="description" content="Steuern auf Bitcoin & Krypto: Schritt-für-Schritt-Leitfaden für DACH. FIFO-Tracker, Checklisten, Beispielrechnungen.">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0a0a12;
+      --surface: #12121e;
+      --border: #1e1e30;
+      --accent: #f7931a;
+      --accent2: #7c3aed;
+      --green: #10b981;
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --max: 820px;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+    }
+    a { color: var(--accent); text-decoration: none; }
+
+    /* Nav */
+    nav {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 32px; border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .nav-logo { font-weight: 700; font-size: 16px; color: var(--text); }
+    .nav-logo span { color: var(--accent2); }
+    .nav-back { font-size: 13px; color: var(--muted); }
+    .nav-back:hover { color: var(--text); }
+
+    /* Hero */
+    .hero {
+      text-align: center;
+      padding: 72px 24px 60px;
+      background: radial-gradient(ellipse at 50% 0%, rgba(247,147,26,.08) 0%, transparent 65%);
+      border-bottom: 1px solid var(--border);
+    }
+    .hero-badge {
+      display: inline-block;
+      background: rgba(247,147,26,.12);
+      border: 1px solid rgba(247,147,26,.25);
+      color: var(--accent);
+      padding: 4px 14px; border-radius: 20px;
+      font-size: 12px; font-weight: 600; letter-spacing: .5px;
+      margin-bottom: 20px;
+    }
+    .hero h1 {
+      font-size: clamp(28px, 5vw, 48px);
+      font-weight: 800; line-height: 1.15;
+      letter-spacing: -1px; margin-bottom: 16px;
+    }
+    .hero h1 em { color: var(--accent); font-style: normal; }
+    .hero p {
+      font-size: 18px; color: var(--muted);
+      max-width: 560px; margin: 0 auto 32px;
+    }
+    .hero-price {
+      font-size: 36px; font-weight: 800;
+      color: var(--text); margin-bottom: 24px;
+    }
+    .hero-price span { font-size: 16px; color: var(--muted); font-weight: 400; }
+    .cta-btn {
+      display: inline-block;
+      background: var(--accent);
+      color: #000;
+      font-weight: 700; font-size: 16px;
+      padding: 14px 36px; border-radius: 10px;
+      transition: transform .15s, box-shadow .15s;
+    }
+    .cta-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 32px rgba(247,147,26,.35);
+      color: #000;
+    }
+    .hero-meta {
+      margin-top: 20px; font-size: 12px; color: var(--muted);
+      display: flex; align-items: center; justify-content: center; gap: 20px;
+      flex-wrap: wrap;
+    }
+    .hero-meta span { display: flex; align-items: center; gap: 5px; }
+
+    /* Sections */
+    section { max-width: var(--max); margin: 0 auto; padding: 60px 24px; }
+    section + section { border-top: 1px solid var(--border); }
+    h2 {
+      font-size: 26px; font-weight: 700;
+      margin-bottom: 28px; letter-spacing: -.5px;
+    }
+    h2 em { color: var(--accent); font-style: normal; }
+
+    /* What you get */
+    .items {
+      display: grid; gap: 14px;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    }
+    .item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px; padding: 18px 20px;
+      display: flex; gap: 14px; align-items: flex-start;
+    }
+    .item-icon {
+      font-size: 22px; flex-shrink: 0;
+      width: 40px; height: 40px;
+      background: rgba(247,147,26,.08); border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .item-text h4 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+    .item-text p { font-size: 13px; color: var(--muted); line-height: 1.5; }
+
+    /* Audience */
+    .pain-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    }
+    @media(max-width: 600px) { .pain-grid { grid-template-columns: 1fr; } }
+    .pain-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 16px 18px;
+    }
+    .pain-card .tag { font-size: 11px; color: var(--accent); font-weight: 600; letter-spacing: .5px; margin-bottom: 6px; }
+    .pain-card p { font-size: 13px; color: var(--muted); }
+
+    /* Steps */
+    .steps { display: flex; flex-direction: column; gap: 16px; }
+    .step {
+      display: flex; gap: 18px; align-items: flex-start;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 20px;
+    }
+    .step-num {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: var(--accent); color: #000;
+      font-weight: 800; font-size: 16px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .step h4 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+    .step p { font-size: 13px; color: var(--muted); }
+
+    /* Chapters */
+    .chapters {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 10px;
+    }
+    .chapter {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 14px 16px;
+      font-size: 13px;
+    }
+    .chapter span { color: var(--accent); font-weight: 700; margin-right: 8px; }
+
+    /* FAQ */
+    .faq { display: flex; flex-direction: column; gap: 12px; }
+    .faq-item {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; overflow: hidden;
+    }
+    .faq-q {
+      width: 100%; text-align: left; padding: 16px 20px;
+      font-size: 14px; font-weight: 600; color: var(--text);
+      background: transparent; border: none; cursor: pointer;
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 10px;
+    }
+    .faq-q:hover { color: var(--accent); }
+    .faq-a {
+      padding: 0 20px; font-size: 13px; color: var(--muted);
+      max-height: 0; overflow: hidden; transition: max-height .25s, padding .25s;
+    }
+    .faq-item.open .faq-a { max-height: 200px; padding: 0 20px 16px; }
+    .faq-arrow { transition: transform .2s; flex-shrink: 0; }
+    .faq-item.open .faq-arrow { transform: rotate(180deg); }
+
+    /* CTA Bottom */
+    .cta-bottom {
+      text-align: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px; padding: 48px 32px;
+      margin: 0 24px 60px;
+      max-width: var(--max); margin-left: auto; margin-right: auto;
+    }
+    .cta-bottom h2 { margin-bottom: 12px; }
+    .cta-bottom p { color: var(--muted); margin-bottom: 28px; }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 24px 32px;
+      text-align: center;
+      font-size: 12px; color: var(--muted);
+    }
+    footer a { color: var(--muted); }
+    footer a:hover { color: var(--text); }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-logo">Apex<span>Core</span></div>
+  <a class="nav-back" href="/">← Alle Produkte</a>
+</nav>
+
+<!-- Hero -->
+<div class="hero">
+  <div class="hero-badge">Produkt #4 · DACH Edition</div>
+  <h1>Bitcoin Tax &amp;<br><em>Reporting Kit</em></h1>
+  <p>Rechtssicher Steuern erklären — für HODLer, Trader &amp; DeFi-Nutzer in DE, AT und CH.</p>
+  <div class="hero-price">29 EUR <span>einmalig · sofort-Download</span></div>
+  <a href="[[GUMROAD_LINK_PRODUCT4]]" class="cta-btn" target="_blank">Jetzt kaufen — 29 EUR →</a>
+  <div class="hero-meta">
+    <span>📄 PDF · 60+ Seiten</span>
+    <span>📊 FIFO-Tracker inklusive</span>
+    <span>✅ DE · AT · CH</span>
+    <span>🔄 Updates inklusive</span>
+  </div>
+</div>
+
+<!-- What you get -->
+<section>
+  <h2>Was du <em>bekommst</em></h2>
+  <div class="items">
+    <div class="item">
+      <div class="item-icon">📖</div>
+      <div class="item-text">
+        <h4>Vollständiger Leitfaden</h4>
+        <p>60+ Seiten: Grundlagen, Berechnungen, FIFO, DeFi, Staking, NFTs — für DE, AT, CH.</p>
+      </div>
+    </div>
+    <div class="item">
+      <div class="item-icon">📊</div>
+      <div class="item-text">
+        <h4>FIFO-Tracker Template</h4>
+        <p>Fertige CSV/Excel-Vorlage: alle Transaktionen eintragen, Gewinn/Verlust automatisch berechnen.</p>
+      </div>
+    </div>
+    <div class="item">
+      <div class="item-icon">✅</div>
+      <div class="item-text">
+        <h4>Jahres-Checkliste</h4>
+        <p>Schritt-für-Schritt-Checkliste: was wann exportieren, prüfen und eintragen.</p>
+      </div>
+    </div>
+    <div class="item">
+      <div class="item-icon">📝</div>
+      <div class="item-text">
+        <h4>Muster-Anlage für Finanzamt</h4>
+        <p>Fertige Zusammenfassungs-Vorlage für Steuerberater oder Anlage SO / E1kv.</p>
+      </div>
+    </div>
+    <div class="item">
+      <div class="item-icon">💡</div>
+      <div class="item-text">
+        <h4>20 FAQ — häufigste Fragen</h4>
+        <p>Hard Forks, NFTs, Wrapped Token, Verluste, Selbstanzeige — alles beantwortet.</p>
+      </div>
+    </div>
+    <div class="item">
+      <div class="item-icon">🛠️</div>
+      <div class="item-text">
+        <h4>Tool-Empfehlungen</h4>
+        <p>Blockpit, Koinly, CoinTracking — Vergleich + wann sich welches lohnt.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Chapters -->
+<section>
+  <h2>Kapitel-<em>Übersicht</em></h2>
+  <div class="chapters">
+    <div class="chapter"><span>01</span>Was ist steuerpflichtig?</div>
+    <div class="chapter"><span>02</span>Steuerpflichtige Ereignisse</div>
+    <div class="chapter"><span>03</span>FIFO-Methode erklärt</div>
+    <div class="chapter"><span>04</span>DeFi: LP, Staking, Lending</div>
+    <div class="chapter"><span>05</span>Dokumente &amp; Nachweise</div>
+    <div class="chapter"><span>06</span>Steuererklärung DE/AT/CH</div>
+    <div class="chapter"><span>07</span>Häufige Fehler vermeiden</div>
+    <div class="chapter"><span>08</span>Tool-Empfehlungen DACH</div>
+    <div class="chapter"><span>T1</span>FIFO-Tracker Template</div>
+    <div class="chapter"><span>T2</span>Jahres-Checkliste</div>
+    <div class="chapter"><span>T3</span>Muster-Finanzamt-Anhang</div>
+    <div class="chapter"><span>FAQ</span>20 häufige Fragen</div>
+  </div>
+</section>
+
+<!-- Audience -->
+<section>
+  <h2>Für <em>wen</em> ist das?</h2>
+  <div class="pain-grid">
+    <div class="pain-card">
+      <div class="tag">HODLER</div>
+      <p>Du hast BTC gekauft und weißt nicht, ob und wann du Steuern zahlen musst.</p>
+    </div>
+    <div class="pain-card">
+      <div class="tag">TRADER</div>
+      <p>Du hast mehrere Trades und brauchst eine zuverlässige FIFO-Berechnung.</p>
+    </div>
+    <div class="pain-card">
+      <div class="tag">DEFI-NUTZER</div>
+      <p>Staking, Liquidity Pools, Lending — du weißt nicht wie das steuerlich behandelt wird.</p>
+    </div>
+    <div class="pain-card">
+      <div class="tag">NFT-CREATOR / -KÄUFER</div>
+      <p>Du hast NFTs gekauft oder verkauft und fragst dich, was du erklären musst.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Steps -->
+<section>
+  <h2>So nutzt du das Kit in <em>3 Schritten</em></h2>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div>
+        <h4>Kaufen &amp; herunterladen</h4>
+        <p>PDF + Templates sofort nach Kauf verfügbar. Einmalige Zahlung, keine Abo-Falle.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div>
+        <h4>Transaktionen in FIFO-Tracker eintragen</h4>
+        <p>Exchange-Exporte (CSV) herunterladen → in das Template eintragen → Gewinn/Verlust automatisch berechnet.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div>
+        <h4>Steuererklärung ausfüllen</h4>
+        <p>Die fertige Zusammenfassung in Anlage SO (DE) / E1kv (AT) / Kantonsformular (CH) übertragen. Fertig.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section>
+  <h2>Häufige <em>Fragen</em></h2>
+  <div class="faq">
+    <div class="faq-item">
+      <button class="faq-q">
+        Gilt das Kit für Deutschland, Österreich UND die Schweiz?
+        <svg class="faq-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div class="faq-a">Ja. Jedes Kapitel behandelt die DACH-spezifischen Regeln separat. Österreich 27,5% KESt, Deutschland § 23 EStG mit 1-Jahres-Frist, Schweiz Privatvermögen.</div>
+    </div>
+    <div class="faq-item">
+      <button class="faq-q">
+        Was, wenn ich DeFi oder Staking habe?
+        <svg class="faq-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div class="faq-a">Kapitel 4 behandelt DeFi vollständig: Liquidity Pools, Staking-Rewards, Lending, Wrapped Token — mit konkreten Rechenbeispielen.</div>
+    </div>
+    <div class="faq-item">
+      <button class="faq-q">
+        Kann ich das Kit mit meinem Steuerberater teilen?
+        <svg class="faq-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div class="faq-a">Ja, du kannst das PDF intern weitergeben. Das Kit eignet sich auch als Grundlage für das Gespräch mit einem Steuerberater.</div>
+    </div>
+    <div class="faq-item">
+      <button class="faq-q">
+        Wird das Kit bei Gesetzesänderungen aktualisiert?
+        <svg class="faq-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div class="faq-a">Ja. Updates bei wesentlichen Rechtsänderungen sind im Kaufpreis enthalten. Du erhältst eine E-Mail mit dem Download-Link für die neue Version.</div>
+    </div>
+    <div class="faq-item">
+      <button class="faq-q">
+        Ich habe viele Transaktionen — reicht das Kit oder brauche ich Software?
+        <svg class="faq-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div class="faq-a">Für bis zu ~100 Transaktionen ist das FIFO-Template ausreichend. Bei mehr empfiehlt Kapitel 8 geeignete Tools (Blockpit, Koinly, CoinTracking).</div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA Bottom -->
+<div class="cta-bottom">
+  <h2>Bereit, deine Steuern in den <em>Griff zu kriegen</em>?</h2>
+  <p>Einmaliger Kauf — PDF + Templates sofort verfügbar. Kein Abo, kein Tracking.</p>
+  <a href="[[GUMROAD_LINK_PRODUCT4]]" class="cta-btn" target="_blank">Jetzt kaufen — 29 EUR →</a>
+</div>
+
+<footer>
+  <p>© 2025 ApexCore · <a href="/">apexcore.group</a> · Kein Steuerrecht, keine Rechtsberatung.</p>
+</footer>
+
+<script>
+  document.querySelectorAll('.faq-q').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const item = btn.closest('.faq-item');
+      const isOpen = item.classList.contains('open');
+      document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('open'));
+      if (!isOpen) item.classList.add('open');
+    });
+  });
+</script>
+</body>
+</html>
