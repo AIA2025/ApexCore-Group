@@ -1,0 +1,119 @@
+name: VPS Full Setup (Secrets + Services)
+
+on:
+  workflow_dispatch:
+    inputs:
+      vps_password:
+        description: "VPS root password"
+        required: true
+        type: string
+      secrets_b64:
+        description: "secrets.env content base64-encoded (from Claude session)"
+        required: true
+        type: string
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install sshpass
+        run: sudo apt-get install -y sshpass
+
+      - name: Write secrets.env + deploy + configure on VPS
+        env:
+          VPS_PASS: ${{ inputs.vps_password }}
+          SECRETS_B64: ${{ inputs.secrets_b64 }}
+        run: |
+          echo "::add-mask::$VPS_PASS"
+          echo "::add-mask::$SECRETS_B64"
+
+          SSH="sshpass -p \"$VPS_PASS\" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=20 root@76.13.138.73"
+
+          # Write secrets.env
+          eval $SSH "bash -s" << SSHEOF
+            set -e
+            echo "=== Writing secrets.env ==="
+            mkdir -p /data/apex-core-central/config
+            echo "$SECRETS_B64" | base64 -d > /data/apex-core-central/config/secrets.env
+            chmod 600 /data/apex-core-central/config/secrets.env
+            echo "secrets.env written: \$(wc -l < /data/apex-core-central/config/secrets.env) lines"
+            source /data/apex-core-central/config/secrets.env
+
+            # Also update /root/.apexcore.env (used by deploy-all.sh)
+            cp /data/apex-core-central/config/secrets.env /root/.apexcore.env
+
+            echo "=== Run deploy-all.sh ==="
+            bash <(curl -fsSL https://raw.githubusercontent.com/AIA2025/apexcore/claude/sharp-brahmagupta-03oc5/deploy-all.sh)
+
+            echo "=== Inject secrets into Docker services ==="
+            # Find all docker-compose.yml files and add env_file if not present
+            for f in \$(find /opt /root /home -name "docker-compose.yml" 2>/dev/null); do
+              if ! grep -q "apex-core-central/config/secrets.env" "\$f"; then
+                echo "  Patching \$f"
+                python3 - "\$f" << 'PYEOF'
+          import sys, re
+          path = sys.argv[1]
+          with open(path) as fh:
+              content = fh.read()
+          # Add env_file under each service block that has 'image:'
+          patched = re.sub(
+              r'(    image:.+\n)',
+              r'\1    env_file:\n      - /data/apex-core-central/config/secrets.env\n',
+              content
+          )
+          if patched != content:
+              with open(path, 'w') as fh:
+                  fh.write(patched)
+              print(f"  Patched: {path}")
+          PYEOF
+              fi
+            done
+
+            echo "=== Set up n8n credentials ==="
+            source /data/apex-core-central/config/secrets.env
+            COOKIE=\$(mktemp)
+            curl -s -c "\$COOKIE" -X POST http://localhost:5678/rest/login \
+              -H "Content-Type: application/json" \
+              -d '{"emailOrLdapLoginId":"m.dordevic@apexcore.group","password":"Trustno1981!"}' > /dev/null
+
+            create_cred() {
+              local name=\$1 type=\$2 data=\$3
+              curl -s -b "\$COOKIE" -X POST http://localhost:5678/rest/credentials \
+                -H "Content-Type: application/json" \
+                -d "{\"name\":\"\$name\",\"type\":\"\$type\",\"data\":\$data}" | \
+                python3 -c "import sys,json; d=json.load(sys.stdin); print(f'  ✅ \$name' if 'id' in d else f'  ⚠️  \$name: ' + str(d.get('message','?')))" 2>/dev/null || true
+            }
+
+            echo "Creating n8n credentials..."
+            create_cred "Anthropic (Claude)" "anthropicApi" \
+              "{\"apiKey\":\"\$ANTHROPIC_API_KEY\"}"
+            create_cred "OpenRouter" "openAiApi" \
+              "{\"apiKey\":\"\$OPENROUTER_API_KEY\",\"url\":\"https://openrouter.ai/api/v1\"}"
+            create_cred "Perplexity" "openAiApi" \
+              "{\"apiKey\":\"\$PERPLEXITY_API_KEY\",\"url\":\"https://api.perplexity.ai\"}"
+            create_cred "Notion" "notionApi" \
+              "{\"apiKey\":\"\$NOTION_TOKEN\"}"
+            rm -f "\$COOKIE"
+
+            echo "=== Restart Docker services with new env ==="
+            for f in \$(find /opt /root -name "docker-compose.yml" 2>/dev/null | head -10); do
+              DIR=\$(dirname "\$f")
+              echo "  Restarting \$DIR"
+              docker compose -f "\$f" up -d --force-recreate 2>/dev/null || \
+              docker-compose -f "\$f" up -d --force-recreate 2>/dev/null || true
+            done
+
+            echo "=== Reload Caddy ==="
+            docker exec caddy caddy reload --config /etc/caddy/Caddyfile 2>/dev/null && echo "Caddy reloaded" || true
+
+            echo ""
+            echo "=== Status ==="
+            echo "secrets.env: \$(wc -l < /data/apex-core-central/config/secrets.env) vars"
+            docker ps --format "  {{.Names}}  {{.Status}}" | head -15
+            echo ""
+            echo "Active subdomains:"
+            for sub in n8n openwebui hermes dashboard paperclip oc; do
+              echo "  https://\$sub.apexcore.group"
+            done
+          SSHEOF
+          echo "✅ VPS setup complete"
