@@ -1,0 +1,44 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [main, "claude/**"]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 76.13.138.73
+          username: root
+          key: ${{ secrets.VPS_DEPLOY_KEY }}
+          script: |
+            set -e
+
+            # Caddyfile aktualisieren
+            cp /opt/openclaw/reverse-proxy/Caddyfile /opt/openclaw/reverse-proxy/Caddyfile.bak.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true
+            curl -fsSL https://raw.githubusercontent.com/AIA2025/apexcore/$GITHUB_REF_NAME/Caddyfile \
+              > /opt/openclaw/reverse-proxy/Caddyfile
+            docker exec caddy caddy validate --config /etc/caddy/Caddyfile
+            docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+            echo "✅ Caddy neu geladen"
+
+            # Dashboard aktualisieren
+            curl -fsSL https://raw.githubusercontent.com/AIA2025/apexcore/$GITHUB_REF_NAME/dashboard/index.html \
+              > /opt/apexcore-dashboard/index.html
+            echo "✅ Dashboard aktualisiert"
+
+            # n8n 5679 stoppen falls noch aktiv
+            docker stop n8n-lx1z-n8n-1 2>/dev/null && echo "✅ n8n-lx1z gestoppt" || echo "ℹ️ n8n-lx1z bereits gestoppt"
+
+            # Notion Backup Cronjob
+            CRON="30 2 * * * /root/scripts/notion-backup.sh >> /root/logs/notion-backup.log 2>&1"
+            crontab -l 2>/dev/null | grep -q "notion-backup" || \
+              (crontab -l 2>/dev/null; echo "$CRON") | crontab -
+            echo "✅ Cronjob aktiv"
+
+            echo "🚀 Deploy abgeschlossen"
