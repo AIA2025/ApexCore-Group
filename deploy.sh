@@ -4,7 +4,7 @@
 
 set -e
 
-N8N="http://localhost:5679"
+N8N="http://localhost:5678"
 EMAIL="m.dordevic@apexcore.group"
 PASS="Trustno1981!"
 COOKIE="/tmp/apexcore_n8n.txt"
