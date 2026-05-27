@@ -1,26 +1,62 @@
-# ApexCore Caddy Reverse Proxy
-# Subdomains → interne Docker-Services
-# DNS muss auf 76.13.138.73 zeigen; TLS läuft automatisch via Let's Encrypt
+# ApexCore — Caddy Reverse Proxy
+# Pfad: /opt/openclaw/reverse-proxy/Caddyfile
+#
+# VORAUSSETZUNG: DNS A-Records müssen auf 76.13.138.73 zeigen
+# bevor diese Config aktiviert wird (sonst schlägt ACME fehl).
+#
+# TLS: Automatisch via Let's Encrypt (Produktion)
 
+# ─── Global ────────────────────────────────────────────────────────────────
+{
+    email oc@apexcore.group
+}
+
+# ─── OpenClaw ──────────────────────────────────────────────────────────────
+oc.apexcore.group {
+    reverse_proxy http://openclaw-fresh:56364 {
+        header_up Host {http.request.host}
+        header_up X-Real-IP {http.request.remote}
+        header_up X-Forwarded-For {http.request.remote}
+    }
+    encode gzip
+}
+
+oc-staging.apexcore.group {
+    reverse_proxy http://openclaw-fresh:56364 {
+        header_up Host {http.request.host}
+        header_up X-Real-IP {http.request.remote}
+        header_up X-Forwarded-For {http.request.remote}
+    }
+    encode gzip
+}
+
+# ─── ApexCore Services ─────────────────────────────────────────────────────
 openwebui.apexcore.de {
     reverse_proxy 127.0.0.1:3000
+    encode gzip
 }
 
 n8n.apexcore.de {
     reverse_proxy 127.0.0.1:5678 {
         header_up Host {host}
         header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
     }
+    encode gzip
 }
 
 hermes.apexcore.de {
     reverse_proxy 127.0.0.1:32772
+    encode gzip
 }
 
 paperclip.apexcore.de {
     reverse_proxy 127.0.0.1:52309
+    encode gzip
 }
 
 dashboard.apexcore.de {
     reverse_proxy 127.0.0.1:9090
+    encode gzip
 }
