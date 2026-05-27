@@ -1,0 +1,86 @@
+name: Setup DNS Records (Porkbun)
+
+on:
+  workflow_dispatch:
+    inputs:
+      apikey:
+        description: "Porkbun API Key (pk1_...)"
+        required: true
+        type: string
+      secretapikey:
+        description: "Porkbun Secret API Key (sk1_...)"
+        required: true
+        type: string
+
+jobs:
+  add-dns:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add A-Records for all subdomains
+        env:
+          PB_KEY: ${{ inputs.apikey }}
+          PB_SECRET: ${{ inputs.secretapikey }}
+          VPS_IP: "76.13.138.73"
+          DOMAIN: "apexcore.group"
+        run: |
+          set -e
+
+          add_record() {
+            local name=$1
+            echo -n "  Adding $name.$DOMAIN → $VPS_IP ... "
+            RESPONSE=$(curl -s -X POST "https://api.porkbun.com/api/json/v3/dns/create/$DOMAIN" \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"apikey\": \"$PB_KEY\",
+                \"secretapikey\": \"$PB_SECRET\",
+                \"name\": \"$name\",
+                \"type\": \"A\",
+                \"content\": \"$VPS_IP\",
+                \"ttl\": \"300\"
+              }")
+            if echo "$RESPONSE" | grep -q '"status":"SUCCESS"'; then
+              echo "✅"
+            else
+              echo "⚠️  $RESPONSE"
+            fi
+          }
+
+          echo "=== Porkbun API Check ==="
+          PING=$(curl -s -X POST "https://api.porkbun.com/api/json/v3/ping" \
+            -H "Content-Type: application/json" \
+            -d "{\"apikey\": \"$PB_KEY\", \"secretapikey\": \"$PB_SECRET\"}")
+          echo "Ping: $PING"
+
+          if ! echo "$PING" | grep -q '"status":"SUCCESS"'; then
+            echo "❌ API credentials invalid!"
+            exit 1
+          fi
+
+          echo ""
+          echo "=== Adding DNS Records ==="
+          add_record "n8n"
+          add_record "openwebui"
+          add_record "hermes"
+          add_record "dashboard"
+          add_record "paperclip"
+
+          echo ""
+          echo "=== Current A-Records for $DOMAIN ==="
+          curl -s -X POST "https://api.porkbun.com/api/json/v3/dns/retrieve/$DOMAIN" \
+            -H "Content-Type: application/json" \
+            -d "{\"apikey\": \"$PB_KEY\", \"secretapikey\": \"$PB_SECRET\"}" | \
+            python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+for r in d.get('records', []):
+    if r.get('type') == 'A':
+        print(f'  {r[\"name\"]:40} A  {r[\"content\"]}')
+"
+
+          echo ""
+          echo "✅ DNS setup complete — records propagate within 5 minutes"
+          echo ""
+          echo "Active subdomains after propagation:"
+          for sub in n8n openwebui hermes dashboard paperclip; do
+            echo "  https://$sub.$DOMAIN"
+          done
