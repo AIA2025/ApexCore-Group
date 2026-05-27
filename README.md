@@ -20,11 +20,11 @@
 
 | Subdomain | Ziel |
 |---|---|
-| openwebui.apexcore.de | :3000 |
-| n8n.apexcore.de | :5678 |
-| hermes.apexcore.de | :32772 |
-| paperclip.apexcore.de | :52309 |
-| dashboard.apexcore.de | :9090 |
+| openwebui.apexcore.group | :3000 |
+| n8n.apexcore.group | :5678 |
+| hermes.apexcore.group | :32772 |
+| paperclip.apexcore.group | :52309 |
+| dashboard.apexcore.group | :9090 |
 
 → Caddyfile liegt im Repo: `Caddyfile`
 

@@ -1,12 +1,8 @@
 # ApexCore — Caddy Reverse Proxy
-# Pfad: /opt/openclaw/reverse-proxy/Caddyfile
-#
-# VORAUSSETZUNG: DNS A-Records müssen auf 76.13.138.73 zeigen
-# bevor diese Config aktiviert wird (sonst schlägt ACME fehl).
-#
-# TLS: Automatisch via Let's Encrypt (Produktion)
+# Pfad auf VPS: /opt/openclaw/reverse-proxy/Caddyfile
+# TLS: automatisch via Let's Encrypt (Produktion)
+# VORAUSSETZUNG: DNS A-Records für alle Subdomains auf 76.13.138.73
 
-# ─── Global ────────────────────────────────────────────────────────────────
 {
     email oc@apexcore.group
 }
@@ -31,12 +27,12 @@ oc-staging.apexcore.group {
 }
 
 # ─── ApexCore Services ─────────────────────────────────────────────────────
-openwebui.apexcore.de {
+openwebui.apexcore.group {
     reverse_proxy 127.0.0.1:3000
     encode gzip
 }
 
-n8n.apexcore.de {
+n8n.apexcore.group {
     reverse_proxy 127.0.0.1:5678 {
         header_up Host {host}
         header_up X-Real-IP {remote_host}
@@ -46,17 +42,17 @@ n8n.apexcore.de {
     encode gzip
 }
 
-hermes.apexcore.de {
+hermes.apexcore.group {
     reverse_proxy 127.0.0.1:32772
     encode gzip
 }
 
-paperclip.apexcore.de {
+paperclip.apexcore.group {
     reverse_proxy 127.0.0.1:52309
     encode gzip
 }
 
-dashboard.apexcore.de {
+dashboard.apexcore.group {
     reverse_proxy 127.0.0.1:9090
     encode gzip
 }
