@@ -1,0 +1,26 @@
+# ApexCore Caddy Reverse Proxy
+# Subdomains → interne Docker-Services
+# DNS muss auf 76.13.138.73 zeigen; TLS läuft automatisch via Let's Encrypt
+
+openwebui.apexcore.de {
+    reverse_proxy 127.0.0.1:3000
+}
+
+n8n.apexcore.de {
+    reverse_proxy 127.0.0.1:5678 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+    }
+}
+
+hermes.apexcore.de {
+    reverse_proxy 127.0.0.1:32772
+}
+
+paperclip.apexcore.de {
+    reverse_proxy 127.0.0.1:52309
+}
+
+dashboard.apexcore.de {
+    reverse_proxy 127.0.0.1:9090
+}
