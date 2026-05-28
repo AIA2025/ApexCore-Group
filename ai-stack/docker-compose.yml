@@ -2,10 +2,13 @@
 # Stack: AI Services
 #
 # Services: open-webui, hermes-agent, hermes-webui, ollama, openclaw
-# Network: ai_net (created here, joined externally by infra-compose)
+# Network: ai_net (created here, joined externally by infra-compose and automation-stack)
 #
 # Usage:
 #   cd /srv/apexcore && docker compose -f ai-stack/docker-compose.yml up -d
+#
+# To start OpenClaw (requires OPENCLAW_IMAGE in .env):
+#   docker compose -f ai-stack/docker-compose.yml --profile ops up -d
 
 networks:
   ai_net:
@@ -16,14 +19,15 @@ services:
 
   # ────────────────────────────────────────────────────────────────────────
   # open-webui — Primary Chat Frontend / Operator Console
-  # Routes to Hermes Agent (primary) and Ollama (local models)
+  # Connects to: hermes-agent (primary LLM), ollama (local models)
+  # External: ai.apexcore.group
   # ────────────────────────────────────────────────────────────────────────
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
     container_name: open-webui
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3000:8080"  # host debug access; Caddy uses container name
+      - "127.0.0.1:3000:8080"  # local debug only; Caddy routes via container name
     volumes:
       - open_webui_data:/app/backend/data
     environment:
@@ -38,23 +42,25 @@ services:
       - hermes-agent
       - ollama
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      # open-webui is Python-based; use wget (busybox) or python fallback
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health >/dev/null 2>&1 || python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/health')\""]
       interval: 30s
-      timeout: 10s
+      timeout: 15s
       retries: 3
-      start_period: 45s
+      start_period: 60s
 
   # ────────────────────────────────────────────────────────────────────────
-  # hermes-agent — LLM Orchestrator / OpenAI-compatible API
-  # Backend: LiteLLM → OpenRouter (Claude, Kimi, GPT-4o, etc.)
-  # API: http://hermes-agent:4000/v1  (OpenAI-compatible)
+  # hermes-agent — LLM Orchestrator / OpenAI-compatible API gateway
+  # Backend: LiteLLM → OpenRouter (Claude, Kimi, GPT-4o, auto)
+  # Internal API: http://hermes-agent:4000/v1
+  # External: not exposed — internal use by open-webui, hermes-webui, n8n
   # ────────────────────────────────────────────────────────────────────────
   hermes-agent:
     image: ghcr.io/berriai/litellm:main-stable
     container_name: hermes-agent
     restart: unless-stopped
     ports:
-      - "127.0.0.1:4000:4000"  # host debug access
+      - "127.0.0.1:4000:4000"  # local debug only
     volumes:
       - ./hermes-config.yaml:/app/config.yaml:ro
     command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "2"]
@@ -64,7 +70,7 @@ services:
     networks:
       - ai_net
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:4000/health"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4000/health >/dev/null 2>&1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -72,8 +78,9 @@ services:
 
   # ────────────────────────────────────────────────────────────────────────
   # hermes-webui — Hermes Control Panel
-  # Separate Open WebUI instance wired exclusively to Hermes Agent.
-  # Use for agent config, system prompt testing, memory management.
+  # Separate Open WebUI instance wired exclusively to hermes-agent.
+  # Used for: system prompt design, agent config, model testing.
+  # External: hermes.apexcore.group
   # ────────────────────────────────────────────────────────────────────────
   hermes-webui:
     image: ghcr.io/open-webui/open-webui:main
@@ -93,30 +100,38 @@ services:
       - ai_net
     depends_on:
       - hermes-agent
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
 
   # ────────────────────────────────────────────────────────────────────────
-  # ollama — Local LLM Inference
+  # ollama — Local LLM Inference (optional)
   # Used by open-webui for private/offline models.
-  # Optional: set OLLAMA_BASE_URL='' in open-webui env to disable.
+  # No external access. Disable by removing OLLAMA_BASE_URL from open-webui env.
   # ────────────────────────────────────────────────────────────────────────
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
     restart: unless-stopped
     ports:
-      - "127.0.0.1:11434:11434"
+      - "127.0.0.1:11434:11434"  # local debug only — never expose externally
     volumes:
       - ollama_data:/root/.ollama
     networks:
       - ai_net
 
   # ────────────────────────────────────────────────────────────────────────
-  # openclaw — Ops Agent / Messenger Integration
-  # Handles WhatsApp, Telegram, action execution.
-  # Set OPENCLAW_IMAGE to the actual image in .env.
+  # openclaw — Ops / Messenger Agent
+  # Role: action execution, WhatsApp/Telegram integration, external ops tasks
+  # REQUIRES: set OPENCLAW_IMAGE in ai-stack/.env before enabling
+  # Activate: docker compose --profile ops up -d
+  # External: ops.apexcore.group (and oc.apexcore.group for legacy)
   # ────────────────────────────────────────────────────────────────────────
   openclaw:
-    image: ${OPENCLAW_IMAGE:-ghcr.io/aia2025/openclaw:latest}
+    image: ${OPENCLAW_IMAGE:?OPENCLAW_IMAGE must be set in ai-stack/.env — see docs/APEXCORE_ORCHESTRATION_V1.md}
     container_name: openclaw
     restart: unless-stopped
     ports:
@@ -127,6 +142,8 @@ services:
       - .env
     networks:
       - ai_net
+    profiles:
+      - ops  # disabled by default; requires OPENCLAW_IMAGE and explicit --profile ops
 
 volumes:
   open_webui_data:

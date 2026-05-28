@@ -1,25 +1,36 @@
 # automation-stack/docker-compose.yml
 # Stack: Automation & Workflow Services
 #
-# Services: n8n, paperclip (placeholder, disabled by default)
-# Network: automation_net (created here, joined externally by infra-compose)
+# Services: n8n, paperclip (placeholder, disabled via profile)
+# Networks:
+#   automation_net — created here (primary)
+#   ai_net         — external (created by ai-stack); n8n joins it to reach hermes-agent + openclaw
+#
+# IMPORTANT: ai-stack must start before this stack so ai_net exists.
+# Use scripts/stack-start.sh for correct ordering.
 #
 # Usage:
 #   cd /srv/apexcore && docker compose -f automation-stack/docker-compose.yml up -d
 #
-# To start Paperclip when ready:
+# To also start Paperclip:
 #   docker compose -f automation-stack/docker-compose.yml --profile paperclip up -d
 
 networks:
   automation_net:
     name: automation_net
     driver: bridge
+  # ai_net is created by ai-stack. n8n joins it to call hermes-agent and openclaw directly.
+  # Dependency: ai-stack (and therefore ai_net) must exist before this stack starts.
+  ai_net:
+    name: ai_net
+    external: true
 
 services:
 
   # ────────────────────────────────────────────────────────────────────────
   # n8n — Workflow Automation Engine
   # Handles: Notion sync, cron jobs, webhook triggers, pipeline orchestration
+  # Networks: automation_net (primary) + ai_net (to reach hermes-agent, openclaw)
   # ────────────────────────────────────────────────────────────────────────
   n8n:
     image: docker.n8n.io/n8nio/n8n:latest
@@ -40,24 +51,27 @@ services:
       - GENERIC_TIMEZONE=Europe/Berlin
       - TZ=Europe/Berlin
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
-      # Internal service URLs — accessible within automation_net
+      # Cross-stack service URLs (resolvable because n8n is in ai_net)
       - HERMES_API_URL=http://hermes-agent:4000/v1
       - HERMES_API_KEY=${LITELLM_MASTER_KEY}
       - OPENCLAW_API_URL=http://openclaw:8000
     networks:
       - automation_net
+      - ai_net
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:5678/healthz"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz >/dev/null 2>&1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
 
   # ────────────────────────────────────────────────────────────────────────
-  # paperclip — Management / Org-Chart Layer
-  # V1: Placeholder only — not production-ready.
-  # Activate only with: --profile paperclip
-  # Prerequisites: see /srv/apexcore/docs/PAPERCLIP_PREP.md
+  # paperclip — Management / Control-Plane Layer
+  # V1: Disabled by default (Compose profile). Activate only when:
+  #   1. All V1 services are stable
+  #   2. Real Paperclip image is available (set PAPERCLIP_IMAGE in .env)
+  #   3. Notion DB structure is defined
+  # See: docs/PAPERCLIP_PREP.md and docs/PAPERCLIP_CONTROL_PLANE_V2.md
   # ────────────────────────────────────────────────────────────────────────
   paperclip:
     image: ${PAPERCLIP_IMAGE:-nginx:alpine}
@@ -66,11 +80,11 @@ services:
     ports:
       - "127.0.0.1:3002:80"
     volumes:
-      - paperclip_data:/app/data
+      - paperclip_data:/usr/share/nginx/html/data
     networks:
       - automation_net
     profiles:
-      - paperclip  # disabled by default — requires explicit --profile flag
+      - paperclip  # never starts unless: --profile paperclip
 
 volumes:
   n8n_data:
