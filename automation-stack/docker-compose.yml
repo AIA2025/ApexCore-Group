@@ -1,0 +1,79 @@
+# automation-stack/docker-compose.yml
+# Stack: Automation & Workflow Services
+#
+# Services: n8n, paperclip (placeholder, disabled by default)
+# Network: automation_net (created here, joined externally by infra-compose)
+#
+# Usage:
+#   cd /srv/apexcore && docker compose -f automation-stack/docker-compose.yml up -d
+#
+# To start Paperclip when ready:
+#   docker compose -f automation-stack/docker-compose.yml --profile paperclip up -d
+
+networks:
+  automation_net:
+    name: automation_net
+    driver: bridge
+
+services:
+
+  # ────────────────────────────────────────────────────────────────────────
+  # n8n — Workflow Automation Engine
+  # Handles: Notion sync, cron jobs, webhook triggers, pipeline orchestration
+  # ────────────────────────────────────────────────────────────────────────
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=${N8N_BASIC_AUTH_ACTIVE:-true}
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD}
+      - N8N_HOST=n8n.apexcore.group
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=https
+      - WEBHOOK_URL=https://n8n.apexcore.group/
+      - GENERIC_TIMEZONE=Europe/Berlin
+      - TZ=Europe/Berlin
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      # Internal service URLs — accessible within automation_net
+      - HERMES_API_URL=http://hermes-agent:4000/v1
+      - HERMES_API_KEY=${LITELLM_MASTER_KEY}
+      - OPENCLAW_API_URL=http://openclaw:8000
+    networks:
+      - automation_net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ────────────────────────────────────────────────────────────────────────
+  # paperclip — Management / Org-Chart Layer
+  # V1: Placeholder only — not production-ready.
+  # Activate only with: --profile paperclip
+  # Prerequisites: see /srv/apexcore/docs/PAPERCLIP_PREP.md
+  # ────────────────────────────────────────────────────────────────────────
+  paperclip:
+    image: ${PAPERCLIP_IMAGE:-nginx:alpine}
+    container_name: paperclip
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3002:80"
+    volumes:
+      - paperclip_data:/app/data
+    networks:
+      - automation_net
+    profiles:
+      - paperclip  # disabled by default — requires explicit --profile flag
+
+volumes:
+  n8n_data:
+    name: n8n_data
+  paperclip_data:
+    name: paperclip_data

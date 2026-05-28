@@ -1,0 +1,14 @@
+# Secrets — never commit
+.env
+*.env
+!*.env.example
+
+# Backups
+backups/
+*.bak
+
+# Runtime artifacts
+*.log
+__pycache__/
+*.pyc
+.DS_Store

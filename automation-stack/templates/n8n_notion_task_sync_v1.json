@@ -1,0 +1,180 @@
+{
+  "name": "Notion Task Sync V1",
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "meta": { "templateId": "apexcore-notion-task-sync-v1" },
+  "nodes": [
+    {
+      "id": "trigger-schedule",
+      "name": "Every 30 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300],
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "minutes", "minutesInterval": 30 }]
+        }
+      }
+    },
+    {
+      "id": "notion-get-tasks",
+      "name": "Get Open Tasks from Notion",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [460, 300],
+      "credentials": {
+        "notionApi": { "id": "__NOTION_ID__", "name": "Notion API" }
+      },
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "__NOTION_TASKS_DB_ID__",
+          "mode": "id"
+        },
+        "returnAll": false,
+        "limit": 20,
+        "filterType": "manual",
+        "filters": {
+          "conditions": [
+            {
+              "key": "Status|select",
+              "condition": "select_equals",
+              "selectValue": "Todo"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "if-has-tasks",
+      "name": "Has Tasks?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "tasks-exist",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty" }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "process-with-hermes",
+      "name": "Process Task with Hermes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 220],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.HERMES_API_URL }}/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.HERMES_API_KEY }}" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: 'hermes-default',\n  messages: [{\n    role: 'system',\n    content: 'You are Hermes, an executive assistant. Briefly acknowledge the task and suggest the next action in 1-2 sentences.'\n  }, {\n    role: 'user',\n    content: 'Task: ' + ($json.properties?.Name?.title?.[0]?.plain_text || 'Untitled task')\n  }]\n}) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "notion-set-in-progress",
+      "name": "Set Status: In Progress",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [1120, 220],
+      "credentials": {
+        "notionApi": { "id": "__NOTION_ID__", "name": "Notion API" }
+      },
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $('Get Open Tasks from Notion').item.json.id }}",
+          "mode": "id"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Status|select",
+              "selectValue": "In Progress"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "notion-log-response",
+      "name": "Log Hermes Response to Notion",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [1340, 220],
+      "credentials": {
+        "notionApi": { "id": "__NOTION_ID__", "name": "Notion API" }
+      },
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "update",
+        "pageId": {
+          "__rl": true,
+          "value": "={{ $('Get Open Tasks from Notion').item.json.id }}",
+          "mode": "id"
+        },
+        "propertiesUi": {
+          "propertyValues": [
+            {
+              "key": "Hermes Note|rich_text",
+              "textContent": "={{ $('Process Task with Hermes').item.json.choices?.[0]?.message?.content || 'No response' }}"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "no-tasks",
+      "name": "No Tasks — Skip",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [900, 400],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Every 30 Minutes": {
+      "main": [[{ "node": "Get Open Tasks from Notion", "type": "main", "index": 0 }]]
+    },
+    "Get Open Tasks from Notion": {
+      "main": [[{ "node": "Has Tasks?", "type": "main", "index": 0 }]]
+    },
+    "Has Tasks?": {
+      "main": [
+        [{ "node": "Process Task with Hermes", "type": "main", "index": 0 }],
+        [{ "node": "No Tasks — Skip", "type": "main", "index": 0 }]
+      ]
+    },
+    "Process Task with Hermes": {
+      "main": [[{ "node": "Set Status: In Progress", "type": "main", "index": 0 }]]
+    },
+    "Set Status: In Progress": {
+      "main": [[{ "node": "Log Hermes Response to Notion", "type": "main", "index": 0 }]]
+    }
+  }
+}

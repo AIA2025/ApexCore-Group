@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ApexCore / Creator OS</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", sans-serif;
+    background: #0c0c10;
+    color: #d0d0d8;
+    min-height: 100vh;
+    padding: 2.5rem 2rem;
+  }
+  header { margin-bottom: 2.5rem; }
+  h1 { font-size: 1.4rem; font-weight: 700; color: #f0f0f8; letter-spacing: -.01em; }
+  .meta { color: #444; font-size: 0.78rem; margin-top: 0.3rem; }
+
+  .section-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: #444;
+    margin: 2rem 0 0.75rem;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.75rem;
+  }
+
+  a.card, .card {
+    display: block;
+    background: #141418;
+    border: 1px solid #1f1f2a;
+    border-radius: 10px;
+    padding: 1.1rem 1.25rem;
+    text-decoration: none;
+    color: inherit;
+    transition: border-color .15s, background .15s;
+  }
+  a.card:hover { border-color: #6060e0; background: #16161e; }
+  .card.disabled { opacity: .35; cursor: default; pointer-events: none; }
+
+  .card-row { display: flex; align-items: center; gap: .65rem; margin-bottom: .4rem; }
+  .card-icon { font-size: 1.2rem; line-height: 1; }
+  .card-name { font-weight: 600; font-size: .92rem; color: #e8e8f0; }
+  .card-role { font-size: .73rem; color: #666; }
+  .card-url { font-size: .7rem; color: #4040c0; margin-top: .55rem; font-family: monospace; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>ApexCore / Creator OS</h1>
+  <div class="meta">Platform Dashboard &nbsp;·&nbsp; V1 &nbsp;·&nbsp; apexcore.group</div>
+</header>
+
+<div class="section-label">AI Layer</div>
+<div class="grid">
+  <a class="card" href="https://ai.apexcore.group" target="_blank" rel="noopener">
+    <div class="card-row"><span class="card-icon">💬</span><span class="card-name">Open WebUI</span></div>
+    <div class="card-role">Frontend &middot; Operator Console &middot; Primary interface</div>
+    <div class="card-url">ai.apexcore.group</div>
+  </a>
+  <a class="card" href="https://hermes.apexcore.group" target="_blank" rel="noopener">
+    <div class="card-row"><span class="card-icon">🧠</span><span class="card-name">Hermes</span></div>
+    <div class="card-role">Orchestrator &middot; COO/CTO Agent &middot; LLM Gateway</div>
+    <div class="card-url">hermes.apexcore.group</div>
+  </a>
+  <a class="card" href="https://ops.apexcore.group" target="_blank" rel="noopener">
+    <div class="card-row"><span class="card-icon">🔧</span><span class="card-name">OpenClaw</span></div>
+    <div class="card-role">Ops Agent &middot; WhatsApp &middot; Telegram &middot; Actions</div>
+    <div class="card-url">ops.apexcore.group</div>
+  </a>
+</div>
+
+<div class="section-label">Automation</div>
+<div class="grid">
+  <a class="card" href="https://n8n.apexcore.group" target="_blank" rel="noopener">
+    <div class="card-row"><span class="card-icon">⚙️</span><span class="card-name">n8n</span></div>
+    <div class="card-role">Workflow Engine &middot; Notion Sync &middot; Cron &middot; Webhooks</div>
+    <div class="card-url">n8n.apexcore.group</div>
+  </a>
+</div>
+
+<div class="section-label">Management — Coming in V2</div>
+<div class="grid">
+  <div class="card disabled">
+    <div class="card-row"><span class="card-icon">📋</span><span class="card-name">Paperclip</span></div>
+    <div class="card-role">Org-Chart Layer &middot; Process Management &middot; V2</div>
+    <div class="card-url">paperclip.apexcore.group</div>
+  </div>
+</div>
+
+</body>
+</html>

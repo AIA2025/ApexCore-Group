@@ -1,0 +1,53 @@
+# ai-stack/hermes-config.yaml
+# LiteLLM configuration for Hermes Agent
+#
+# Hermes acts as an OpenAI-compatible API gateway routing to OpenRouter.
+# Open WebUI and n8n talk to Hermes at http://hermes-agent:4000/v1
+#
+# Model aliases decouple callers from specific model versions.
+# Update model IDs here without touching other services.
+
+model_list:
+
+  # Default model — used when caller does not specify
+  - model_name: hermes-default
+    litellm_params:
+      model: openrouter/anthropic/claude-sonnet-4-5
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  # High-capacity reasoning
+  - model_name: claude-opus
+    litellm_params:
+      model: openrouter/anthropic/claude-opus-4-5
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  # Balanced daily driver
+  - model_name: claude-sonnet
+    litellm_params:
+      model: openrouter/anthropic/claude-sonnet-4-5
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  # Long context / coding
+  - model_name: kimi
+    litellm_params:
+      model: openrouter/moonshotai/kimi-k2
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_API_KEY
+
+  # Broad availability fallback
+  - model_name: auto
+    litellm_params:
+      model: openrouter/openrouter/auto
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_API_KEY
+
+litellm_settings:
+  set_verbose: false
+  drop_params: true
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  store_model_in_db: false

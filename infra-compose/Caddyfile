@@ -1,0 +1,94 @@
+# ApexCore — Caddyfile V1
+# Reverse Proxy: TLS termination + domain routing
+#
+# Caddy routes to services via Docker network DNS (container names).
+# Caddy must be joined to ai_net and automation_net (see docker-compose.yml).
+#
+# VPS: /srv/apexcore/infra-compose/Caddyfile
+# Deployed via: github.com/AIA2025/apexcore (claude/gracious-brahmagupta-mqZly)
+
+{
+	email {$CADDY_EMAIL}
+	admin off
+}
+
+# ─── AI Frontend ───────────────────────────────────────────────────────────
+
+# Primary chat frontend
+ai.apexcore.group {
+	reverse_proxy open-webui:8080
+	encode gzip
+}
+
+# Legacy domain — redirect to ai.apexcore.group
+openwebui.apexcore.group {
+	redir https://ai.apexcore.group{uri} permanent
+}
+
+# Hermes control panel (separate Open WebUI instance pointing at Hermes only)
+hermes.apexcore.group {
+	reverse_proxy hermes-webui:8080
+	encode gzip
+}
+
+# ─── Automation ────────────────────────────────────────────────────────────
+
+n8n.apexcore.group {
+	reverse_proxy n8n:5678 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+	encode gzip
+}
+
+# ─── Ops / Messenger Agent ─────────────────────────────────────────────────
+
+# New clean domain for OpenClaw API/UI
+ops.apexcore.group {
+	reverse_proxy openclaw:8000
+	encode gzip
+}
+
+# Legacy OpenClaw domain — kept for backward compat
+# Routes: /n8n/* → n8n, everything else → openclaw
+oc.apexcore.group {
+	handle /n8n/* {
+		uri strip_prefix /n8n
+		reverse_proxy n8n:5678
+	}
+	handle {
+		reverse_proxy openclaw:8000 {
+			header_up Host {http.request.host}
+			header_up X-Real-IP {http.request.remote}
+		}
+	}
+	encode gzip
+}
+
+oc-staging.apexcore.group {
+	reverse_proxy openclaw:8000 {
+		header_up Host {http.request.host}
+		header_up X-Real-IP {http.request.remote}
+		header_up X-Forwarded-For {http.request.remote}
+		header_up X-Forwarded-Proto {scheme}
+	}
+	encode gzip
+}
+
+# ─── Management (placeholder) ──────────────────────────────────────────────
+
+paperclip.apexcore.group {
+	# Uncomment when paperclip service is active:
+	# reverse_proxy paperclip:3000
+	respond "Paperclip is not yet active — coming in V2." 503
+}
+
+# ─── Static Dashboard ──────────────────────────────────────────────────────
+
+dashboard.apexcore.group {
+	root * /srv/dashboard
+	file_server
+	encode gzip
+}

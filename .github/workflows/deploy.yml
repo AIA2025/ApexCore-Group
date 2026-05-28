@@ -10,7 +10,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Deploy to VPS via SSH
+      # ── Copy repo structure to VPS ────────────────────────────────────
+      - name: Sync files to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: 76.13.138.73
+          username: root
+          key: ${{ secrets.VPS_DEPLOY_KEY }}
+          source: >
+            infra-compose/docker-compose.yml,
+            infra-compose/Caddyfile,
+            infra-compose/.env.example,
+            ai-stack/docker-compose.yml,
+            ai-stack/hermes-config.yaml,
+            ai-stack/.env.example,
+            automation-stack/docker-compose.yml,
+            automation-stack/.env.example,
+            automation-stack/templates/,
+            n8n-workflows/,
+            cmd-api/server.py,
+            dashboard/index.html,
+            scripts/,
+            docs/
+          target: /srv/apexcore
+          strip_components: 0
+          overwrite: true
+
+      # ── VPS: apply config + restart services ──────────────────────────
+      - name: Apply config on VPS
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 76.13.138.73
@@ -19,40 +46,61 @@ jobs:
           script: |
             set -e
 
-            # Caddyfile update
-            cp /opt/openclaw/reverse-proxy/Caddyfile /opt/openclaw/reverse-proxy/Caddyfile.bak.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true
-            curl -fsSL "https://raw.githubusercontent.com/AIA2025/apexcore/$GITHUB_REF_NAME/Caddyfile" \
-              > /opt/openclaw/reverse-proxy/Caddyfile
-            docker exec caddy caddy validate --config /etc/caddy/Caddyfile 2>&1 | tail -2
-            docker exec caddy caddy reload --config /etc/caddy/Caddyfile
-            echo "✅ Caddy reloaded"
+            # Ensure directory structure exists
+            mkdir -p /srv/apexcore/backups
+            chmod +x /srv/apexcore/scripts/*.sh 2>/dev/null || true
 
-            # Dashboard update
+            # ── Caddy config ─────────────────────────────────────────────
+            CADDY_OLD=/opt/openclaw/reverse-proxy/Caddyfile
+            CADDY_NEW=/srv/apexcore/infra-compose/Caddyfile
+
+            # Backup current config
+            if [ -f "$CADDY_OLD" ]; then
+              BACKUP="$CADDY_OLD.bak.$(date +%Y%m%d_%H%M%S)"
+              cp "$CADDY_OLD" "$BACKUP"
+              cp "$BACKUP" "/srv/apexcore/backups/Caddyfile.bak.$(date +%Y%m%d_%H%M%S)"
+            fi
+
+            # Keep old path in sync for any container still mounting it
+            cp "$CADDY_NEW" "$CADDY_OLD" 2>/dev/null || true
+
+            # Validate + reload (works for both old and new caddy containers)
+            if docker inspect caddy &>/dev/null; then
+              docker exec caddy caddy validate --config /etc/caddy/Caddyfile 2>&1 | tail -3
+              docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+              echo "✅ Caddy reloaded"
+            else
+              echo "⚠️  Caddy container not running — config updated, start with stack-start.sh"
+            fi
+
+            # ── Dashboard ─────────────────────────────────────────────────
             mkdir -p /opt/apexcore-dashboard
-            curl -fsSL "https://raw.githubusercontent.com/AIA2025/apexcore/$GITHUB_REF_NAME/dashboard/index.html" \
-              > /opt/apexcore-dashboard/index.html
+            cp /srv/apexcore/dashboard/index.html /opt/apexcore-dashboard/index.html
             echo "✅ Dashboard updated"
 
-            # cmd-api: deploy and ensure running
-            mkdir -p /opt/apexcore/cmd-api
-            curl -fsSL "https://raw.githubusercontent.com/AIA2025/apexcore/$GITHUB_REF_NAME/cmd-api/server.py" \
-              > /opt/apexcore/cmd-api/server.py
+            # ── cmd-api ───────────────────────────────────────────────────
             pkill -f "cmd-api/server.py" 2>/dev/null || true
             sleep 1
-            CMD_TOKEN="${{ secrets.CMD_API_TOKEN }}" nohup python3 /opt/apexcore/cmd-api/server.py > /var/log/cmd-api.log 2>&1 &
+            CMD_TOKEN="${{ secrets.CMD_API_TOKEN }}" \
+              nohup python3 /srv/apexcore/cmd-api/server.py \
+              > /var/log/cmd-api.log 2>&1 &
             echo "✅ cmd-api started on port 7070"
 
-            # Stop old n8n instance
-            docker stop n8n-lx1z-n8n-1 2>/dev/null && echo "✅ old n8n stopped" || true
+            # ── Legacy n8n cleanup ────────────────────────────────────────
+            docker stop n8n-lx1z-n8n-1 2>/dev/null && echo "✅ legacy n8n stopped" || true
 
-            # Notion Backup Cronjob
+            # ── Notion backup cron ────────────────────────────────────────
             CRON="30 2 * * * /root/scripts/notion-backup.sh >> /root/logs/notion-backup.log 2>&1"
             crontab -l 2>/dev/null | grep -q "notion-backup" || \
               (crontab -l 2>/dev/null; echo "$CRON") | crontab -
-            echo "✅ Cronjob active"
+            echo "✅ Notion backup cron active"
 
-            echo "🚀 Deploy complete on $(hostname)"
+            echo "🚀 Deploy complete: $(hostname) @ $(date)"
+            echo ""
+            echo "── Container status ──────────────────────────────────────"
+            docker ps --format "  {{.Names}}\t{{.Status}}" 2>/dev/null | sort || true
 
+      # ── DNS Records (Porkbun) ─────────────────────────────────────────
       - name: Add DNS Records via Porkbun API
         if: ${{ env.PB_KEY != '' }}
         env:
@@ -69,5 +117,7 @@ jobs:
             echo "$name: $(echo $R | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("status","?") + " " + str(d.get("id","")))')"
           }
           echo "Adding DNS A-records..."
-          for sub in n8n openwebui hermes dashboard paperclip; do add_record "$sub"; done
+          for sub in ai hermes n8n ops dashboard openwebui oc paperclip; do
+            add_record "$sub"
+          done
           echo "DNS update done"

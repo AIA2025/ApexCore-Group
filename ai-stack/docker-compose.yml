@@ -1,0 +1,139 @@
+# ai-stack/docker-compose.yml
+# Stack: AI Services
+#
+# Services: open-webui, hermes-agent, hermes-webui, ollama, openclaw
+# Network: ai_net (created here, joined externally by infra-compose)
+#
+# Usage:
+#   cd /srv/apexcore && docker compose -f ai-stack/docker-compose.yml up -d
+
+networks:
+  ai_net:
+    name: ai_net
+    driver: bridge
+
+services:
+
+  # ────────────────────────────────────────────────────────────────────────
+  # open-webui — Primary Chat Frontend / Operator Console
+  # Routes to Hermes Agent (primary) and Ollama (local models)
+  # ────────────────────────────────────────────────────────────────────────
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:8080"  # host debug access; Caddy uses container name
+    volumes:
+      - open_webui_data:/app/backend/data
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OPENAI_API_BASE_URL=http://hermes-agent:4000/v1
+      - OPENAI_API_KEY=${LITELLM_MASTER_KEY}
+      - WEBUI_AUTH=${WEBUI_AUTH:-true}
+      - WEBUI_NAME=ApexCore AI
+    networks:
+      - ai_net
+    depends_on:
+      - hermes-agent
+      - ollama
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+
+  # ────────────────────────────────────────────────────────────────────────
+  # hermes-agent — LLM Orchestrator / OpenAI-compatible API
+  # Backend: LiteLLM → OpenRouter (Claude, Kimi, GPT-4o, etc.)
+  # API: http://hermes-agent:4000/v1  (OpenAI-compatible)
+  # ────────────────────────────────────────────────────────────────────────
+  hermes-agent:
+    image: ghcr.io/berriai/litellm:main-stable
+    container_name: hermes-agent
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4000:4000"  # host debug access
+    volumes:
+      - ./hermes-config.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--num_workers", "2"]
+    environment:
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
+    networks:
+      - ai_net
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ────────────────────────────────────────────────────────────────────────
+  # hermes-webui — Hermes Control Panel
+  # Separate Open WebUI instance wired exclusively to Hermes Agent.
+  # Use for agent config, system prompt testing, memory management.
+  # ────────────────────────────────────────────────────────────────────────
+  hermes-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: hermes-webui
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3001:8080"
+    volumes:
+      - hermes_webui_data:/app/backend/data
+    environment:
+      - OPENAI_API_BASE_URL=http://hermes-agent:4000/v1
+      - OPENAI_API_KEY=${LITELLM_MASTER_KEY}
+      - WEBUI_AUTH=${WEBUI_AUTH:-true}
+      - WEBUI_NAME=Hermes Control Panel
+      - ENABLE_OLLAMA_API=false
+    networks:
+      - ai_net
+    depends_on:
+      - hermes-agent
+
+  # ────────────────────────────────────────────────────────────────────────
+  # ollama — Local LLM Inference
+  # Used by open-webui for private/offline models.
+  # Optional: set OLLAMA_BASE_URL='' in open-webui env to disable.
+  # ────────────────────────────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - ai_net
+
+  # ────────────────────────────────────────────────────────────────────────
+  # openclaw — Ops Agent / Messenger Integration
+  # Handles WhatsApp, Telegram, action execution.
+  # Set OPENCLAW_IMAGE to the actual image in .env.
+  # ────────────────────────────────────────────────────────────────────────
+  openclaw:
+    image: ${OPENCLAW_IMAGE:-ghcr.io/aia2025/openclaw:latest}
+    container_name: openclaw
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - openclaw_data:/app/data
+    env_file:
+      - .env
+    networks:
+      - ai_net
+
+volumes:
+  open_webui_data:
+    name: open_webui_data
+  hermes_webui_data:
+    name: hermes_webui_data
+  ollama_data:
+    name: ollama_data
+  openclaw_data:
+    name: openclaw_data
