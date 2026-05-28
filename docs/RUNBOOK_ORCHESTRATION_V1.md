@@ -174,6 +174,100 @@ curl http://localhost:8000/
 
 ---
 
+## Hermes Dispatcher — Ops
+
+**Pfad:** `/srv/apexcore/cmd-api/hermes_dispatcher.py`
+**Port:** `7071` (Host, nicht containerisiert)
+**Logs:** `/var/log/apexcore-dispatcher.log` (JSON-Format, one entry per line)
+
+### Erstmaliges Setup
+
+```bash
+# 1. Env-Datei anlegen
+cp /srv/apexcore/cmd-api/.env.dispatcher.example \
+   /srv/apexcore/cmd-api/.env.dispatcher
+
+# 2. Tokens setzen
+nano /srv/apexcore/cmd-api/.env.dispatcher
+#   → DISPATCHER_TOKEN=$(openssl rand -hex 24)  ← generieren und eintragen
+#   → LITELLM_MASTER_KEY=sk-hermes-...           ← gleicher Wert wie ai-stack/.env
+#   → CMD_TOKEN=...                              ← gleicher Wert wie cmd-api
+
+# 3. Systemd-Unit installieren
+cp /srv/apexcore/cmd-api/apexcore-dispatcher.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable apexcore-dispatcher
+systemctl start  apexcore-dispatcher
+```
+
+### Starten / Stoppen / Status
+
+```bash
+systemctl start   apexcore-dispatcher
+systemctl stop    apexcore-dispatcher
+systemctl restart apexcore-dispatcher
+systemctl status  apexcore-dispatcher
+```
+
+### Health Check
+
+```bash
+curl -s http://localhost:7071/health | python3 -m json.tool
+# Erwartetes Ergebnis: {"status": "ok", "service": "hermes-dispatcher", ...}
+```
+
+### Routing-Tabelle anzeigen
+
+```bash
+DISP_TOKEN=$(grep DISPATCHER_TOKEN /srv/apexcore/cmd-api/.env.dispatcher | cut -d= -f2)
+curl -s http://localhost:7071/routes \
+  -H "Authorization: Bearer $DISP_TOKEN" | python3 -m json.tool
+```
+
+### Test-Dispatch
+
+```bash
+DISP_TOKEN=$(grep DISPATCHER_TOKEN /srv/apexcore/cmd-api/.env.dispatcher | cut -d= -f2)
+
+# System Status
+curl -s -X POST http://localhost:7071/dispatch \
+  -H "Authorization: Bearer $DISP_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"task": "system status check"}' | python3 -m json.tool
+
+# Research
+curl -s -X POST http://localhost:7071/dispatch \
+  -H "Authorization: Bearer $DISP_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"task": "Research: what are the top 3 AI newsletter platforms?"}' \
+  | python3 -m json.tool
+```
+
+### Logs live verfolgen
+
+```bash
+tail -f /var/log/apexcore-dispatcher.log | python3 -c "
+import sys, json
+for line in sys.stdin:
+    try:
+        e = json.loads(line)
+        print(f\"{e['ts']} [{e['level']}] {e['event']}\", {k:v for k,v in e.items() if k not in ('ts','level','event')})
+    except: print(line, end='')
+"
+```
+
+### Pfad-Mapping
+
+| Referenz | Tatsächlicher Pfad auf VPS |
+|---|---|
+| Dispatcher-Script | `/srv/apexcore/cmd-api/hermes_dispatcher.py` |
+| Dispatcher-Env | `/srv/apexcore/cmd-api/.env.dispatcher` |
+| Systemd-Unit | `/etc/systemd/system/apexcore-dispatcher.service` |
+| Logs | `/var/log/apexcore-dispatcher.log` |
+| *(Briefing: `/data/apex-core-central/`)* | *→ `/srv/apexcore/`* |
+
+---
+
 ## Einzelnen Service neu starten
 
 ```bash

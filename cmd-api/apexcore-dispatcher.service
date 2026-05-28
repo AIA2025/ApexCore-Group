@@ -1,0 +1,22 @@
+[Unit]
+Description=ApexCore Hermes Dispatcher
+Documentation=https://github.com/aia2025/apexcore/blob/main/docs/HERMES_FLOW_TECHNICAL_V1.md
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/srv/apexcore/cmd-api
+EnvironmentFile=/srv/apexcore/cmd-api/.env.dispatcher
+ExecStart=/usr/bin/python3 /srv/apexcore/cmd-api/hermes_dispatcher.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/var/log/apexcore-dispatcher.log
+StandardError=append:/var/log/apexcore-dispatcher.log
+
+# Protect against accidental --dev in production
+# Remove ExecStart override if you need dev mode temporarily
+ExecStartPre=/usr/bin/test -n "${DISPATCHER_TOKEN}"
+
+[Install]
+WantedBy=multi-user.target

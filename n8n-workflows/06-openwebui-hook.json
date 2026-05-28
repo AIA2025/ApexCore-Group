@@ -1,0 +1,124 @@
+{
+  "name": "Open WebUI → Hermes Dispatcher Hook",
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "dispatch",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": false
+        }
+      },
+      "id": "wh-dispatch-receiver",
+      "name": "Webhook — POST /webhook/dispatch",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "apexcore-dispatch"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize incoming payload — accept both Open WebUI format and raw format\nconst body = $input.first().json.body ?? $input.first().json;\n\n// Open WebUI sends: { message: '...', model: '...', session_id: '...' }\n// Direct call sends: { task: '...', options: {} }\nconst task = body.task ?? body.message ?? body.content ?? '';\nconst options = body.options ?? {};\n\nif (!task || task.trim() === '') {\n  throw new Error('Missing task/message field in request body');\n}\n\nreturn [{ json: { task: task.trim(), options } }];"
+      },
+      "id": "code-normalize-input",
+      "name": "Payload normalisieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:7071/dispatch",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.DISPATCHER_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ task: $json.task, options: $json.options }) }}",
+        "options": {
+          "timeout": 120000,
+          "response": {
+            "response": {
+              "neverError": false
+            }
+          }
+        }
+      },
+      "id": "http-call-dispatcher",
+      "name": "Hermes Dispatcher aufrufen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [750, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\n\n// Extract the usable response text for Open WebUI\nconst responseText = d?.result?.response\n  ?? d?.result?.n8n?.response\n  ?? d?.result?.error\n  ?? 'Hermes returned no response.';\n\nreturn [{\n  json: {\n    // Open WebUI compatible response\n    response: responseText,\n    // Full dispatcher metadata\n    task_id:      d?.task_id,\n    status:       d?.status,\n    intent:       d?.intent,\n    worker:       d?.worker,\n    started_at:   d?.started_at,\n    completed_at: d?.completed_at,\n  }\n}];"
+      },
+      "id": "code-format-response",
+      "name": "Response formatieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "resp-to-webui",
+      "name": "Respond to Open WebUI",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: $json.message ?? 'Dispatcher error', status: 'BLOCKED' }) }}",
+        "options": {
+          "responseCode": 500
+        }
+      },
+      "id": "resp-error",
+      "name": "Error Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1250, 500]
+    }
+  ],
+  "connections": {
+    "Webhook — POST /webhook/dispatch": {
+      "main": [[{ "node": "Payload normalisieren", "type": "main", "index": 0 }]]
+    },
+    "Payload normalisieren": {
+      "main": [
+        [{ "node": "Hermes Dispatcher aufrufen", "type": "main", "index": 0 }],
+        [{ "node": "Error Response", "type": "main", "index": 0 }]
+      ]
+    },
+    "Hermes Dispatcher aufrufen": {
+      "main": [[{ "node": "Response formatieren", "type": "main", "index": 0 }]]
+    },
+    "Response formatieren": {
+      "main": [[{ "node": "Respond to Open WebUI", "type": "main", "index": 0 }]]
+    }
+  }
+}

@@ -55,6 +55,10 @@ services:
       - HERMES_API_URL=http://hermes-agent:4000/v1
       - HERMES_API_KEY=${LITELLM_MASTER_KEY}
       - OPENCLAW_API_URL=http://openclaw:8000
+      # Dispatcher runs on VPS host; accessible via host.docker.internal (see extra_hosts)
+      - DISPATCHER_TOKEN=${DISPATCHER_TOKEN}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - automation_net
       - ai_net

@@ -257,21 +257,108 @@ curl -s -X POST http://localhost:7071/dispatch \
 
 ---
 
-## Open WebUI → Hermes → Dispatcher Integration
+## Open WebUI → Dispatcher Hook (Option A, V1)
 
-In Open WebUI kann der Dispatcher als Custom Tool oder via Hermes System-Prompt angesteuert werden:
+**Implementiert in:** `n8n-workflows/06-openwebui-hook.json`
 
-**Option A — Direkt via n8n Webhook (empfohlen V1):**
-- Operator schickt Task in Open WebUI an Hermes
-- Hermes-System-Prompt enthält Routing-Instruktionen
-- Hermes delegiert via Webhook an n8n → n8n → Dispatcher
+### Netzwerk-Pfad
 
-**Option B — Dispatcher als separater OpenAI-kompatibler Endpoint (V2):**
-- Dispatcher erhält OpenAI-API-Format direkt
-- Klassifiziert intern und routet transparent
-- Open WebUI spricht Dispatcher wie einen LLM an
+```
+Open WebUI (Browser)
+  → POST https://n8n.apexcore.group/webhook/dispatch
+  → n8n (automation_net + ai_net) via host.docker.internal:7071
+  → Hermes Dispatcher (Port 7071, Host)
+  → Worker (hermes-agent / cmd-api / openclaw)
+  → Response zurück an Open WebUI
+```
 
-V1 nutzt Option A. Option B erfordert OpenAI-API-kompatibles Wrapper-Layer im Dispatcher.
+### Payload-Contract
+
+**n8n Webhook Eingang** — akzeptiert beide Formate:
+
+```json
+// Open WebUI Format
+{ "message": "Research the best Bitcoin wallets for 2026" }
+
+// Direct Call Format
+{ "task": "Research the best Bitcoin wallets for 2026", "options": {} }
+```
+
+**Dispatcher Response (von n8n zurück):**
+
+```json
+{
+  "response":      "...",
+  "task_id":       "a3f9c1b2",
+  "status":        "DONE",
+  "intent":        "RESEARCH",
+  "worker":        "hermes-agent",
+  "started_at":    "2026-05-28T10:00:00+00:00",
+  "completed_at":  "2026-05-28T10:00:04+00:00"
+}
+```
+
+**Dispatcher Error Response:**
+
+```json
+{
+  "error":  "Dispatcher error message",
+  "status": "BLOCKED"
+}
+```
+
+### Setup-Schritte (einmalig)
+
+```bash
+# 1. DISPATCHER_TOKEN in automation-stack/.env setzen
+# (gleicher Wert wie in cmd-api/.env.dispatcher)
+echo "DISPATCHER_TOKEN=your-token-here" >> /srv/apexcore/automation-stack/.env
+
+# 2. n8n Stack neu starten damit extra_hosts + DISPATCHER_TOKEN env greifen
+cd /srv/apexcore
+docker compose -f automation-stack/docker-compose.yml down
+docker compose -f automation-stack/docker-compose.yml up -d
+
+# 3. Workflow 06 in n8n importieren
+# n8n UI → Workflows → Import from File → n8n-workflows/06-openwebui-hook.json
+
+# 4. Workflow aktivieren (Toggle)
+
+# 5. Smoke-Test
+curl -s -X POST https://n8n.apexcore.group/webhook/dispatch \
+  -H "Content-Type: application/json" \
+  -d '{"message": "system status check"}' | python3 -m json.tool
+```
+
+### Smoke-Tests — alle Workflows
+
+```bash
+# Workflow 04 — Daily Brief (manueller Test-Run in n8n UI)
+# → n8n UI → Workflow 04 öffnen → "Test workflow" klicken
+
+# Workflow 05 — Completion Notify (Test-Webhook feuern)
+curl -s -X POST https://n8n.apexcore.group/webhook/log \
+  -H "Content-Type: application/json" \
+  -d '{
+    "task_id": "test-001",
+    "intent": "RESEARCH",
+    "status": "DONE",
+    "result": {"response": "Test-Ergebnis: 3 AI Newsletter Platforms gefunden."},
+    "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
+  }' | python3 -m json.tool
+# Erwartetes Ergebnis: Telegram-Notification + Notion Log-Eintrag
+
+# Workflow 06 — Open WebUI Hook
+curl -s -X POST https://n8n.apexcore.group/webhook/dispatch \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Research: top 3 productivity tools for solopreneurs"}' \
+  | python3 -m json.tool
+# Erwartetes Ergebnis: intent=RESEARCH, worker=hermes-agent, response vorhanden
+```
+
+---
+
+## Hinweis: cmd-api vs. Dispatcher
 
 ---
 
