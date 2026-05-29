@@ -3,6 +3,7 @@ name: Deploy to VPS
 on:
   push:
     branches: [main, "claude/**"]
+  workflow_dispatch:  # allow manual re-trigger from GitHub UI
 
 jobs:
   deploy:
@@ -89,6 +90,30 @@ jobs:
               nohup python3 /srv/apexcore/cmd-api/server.py \
               > /var/log/cmd-api.log 2>&1 &
             echo "✅ cmd-api started on :7070"
+
+            # ── hermes dispatcher ─────────────────────────────────────────
+            pkill -f "hermes_dispatcher.py" 2>/dev/null || true
+            sleep 1
+            if [ -f /srv/apexcore/cmd-api/.env.dispatcher ]; then
+              set -a; source /srv/apexcore/cmd-api/.env.dispatcher; set +a
+              nohup python3 /srv/apexcore/cmd-api/hermes_dispatcher.py \
+                > /var/log/apexcore-dispatcher.log 2>&1 &
+              echo "✅ hermes dispatcher started on :7071"
+            else
+              echo "⚠️  /srv/apexcore/cmd-api/.env.dispatcher not found — dispatcher not started"
+              echo "    Run: cp /srv/apexcore/cmd-api/.env.dispatcher.example /srv/apexcore/cmd-api/.env.dispatcher"
+            fi
+
+            # ── Docker Compose stacks (up -d, no recreation unless changed) ─
+            cd /srv/apexcore
+            if docker network inspect ai_net &>/dev/null 2>&1; then
+              docker compose -f ai-stack/docker-compose.yml         up -d --remove-orphans 2>&1 | tail -5
+              docker compose -f automation-stack/docker-compose.yml up -d --remove-orphans 2>&1 | tail -5
+              docker compose -f infra-compose/docker-compose.yml    up -d --remove-orphans 2>&1 | tail -5
+              echo "✅ Compose stacks refreshed"
+            else
+              echo "⚠️  ai_net not found — run scripts/stack-start.sh to initialise stacks"
+            fi
 
             # ── Legacy n8n cleanup ────────────────────────────────────────
             docker stop n8n-lx1z-n8n-1 2>/dev/null && echo "✅ legacy n8n stopped" || true
