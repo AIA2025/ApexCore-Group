@@ -24,18 +24,9 @@ cd "$APEXCORE_DIR"
 
 log "=== ApexCore Stack Start ==="
 
-# Pre-create external networks so Caddy can join them before stacks fully start.
-# docker compose will also create them, but doing it upfront avoids race conditions
-# if stacks are started in parallel externally.
-step "Networks"
-for net in ai_net automation_net; do
-  if docker network inspect "$net" &>/dev/null 2>&1; then
-    log "  network exists: $net"
-  else
-    log "  creating network: $net"
-    docker network create "$net"
-  fi
-done
+# Networks are created by docker compose with the correct labels.
+# Do NOT pre-create with docker network create — that produces label-less networks
+# which docker compose then rejects with "incorrect label" errors.
 
 # 1. AI Stack (creates ai_net, starts open-webui, hermes-agent, ollama)
 step "ai-stack"
