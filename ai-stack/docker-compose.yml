@@ -131,7 +131,7 @@ services:
   # External: ops.apexcore.group (and oc.apexcore.group for legacy)
   # ────────────────────────────────────────────────────────────────────────
   openclaw:
-    image: ${OPENCLAW_IMAGE:?OPENCLAW_IMAGE must be set in ai-stack/.env — see docs/APEXCORE_ORCHESTRATION_V1.md}
+    image: ${OPENCLAW_IMAGE:-ghcr.io/aia2025/openclaw:latest}
     container_name: openclaw
     restart: unless-stopped
     ports:
