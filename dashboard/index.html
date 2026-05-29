@@ -101,11 +101,11 @@
     <p class="label">Endpunkt</p>
     <p class="value"><a href="http://76.13.138.73:8000">http://76.13.138.73:8000</a></p>
     <br>
-    <div class="endpoint"><span class="method get">GET</span>  <code>/health</code> — Systemstatus</div>
-    <div class="endpoint"><span class="method post">POST</span> <code>/scan</code> — Scan starten</div>
-    <div class="endpoint"><span class="method get">GET</span>  <code>/status/{scan_id}</code> — Status</div>
-    <div class="endpoint"><span class="method get">GET</span>  <code>/dossier/{scan_id}</code> — PDF herunterladen</div>
-    <div class="endpoint"><span class="method get">GET</span>  <code>/dossier/latest</code> — Letztes PDF</div>
+    <div class="endpoint"><span class="method get">GET</span>  <code>/health</code> &mdash; Systemstatus</div>
+    <div class="endpoint"><span class="method post">POST</span> <code>/scan</code> &mdash; Scan starten</div>
+    <div class="endpoint"><span class="method get">GET</span>  <code>/status/{scan_id}</code> &mdash; Status</div>
+    <div class="endpoint"><span class="method get">GET</span>  <code>/dossier/{scan_id}</code> &mdash; PDF herunterladen</div>
+    <div class="endpoint"><span class="method get">GET</span>  <code>/dossier/latest</code> &mdash; Letztes PDF</div>
   </div>
 
   <div class="card">
@@ -114,29 +114,28 @@
     <pre>curl -X POST http://76.13.138.73:8000/scan \
   -H "Content-Type: application/json" \
   -d '{"url": "https://example.com"}'</pre>
-    <p class="label" style="margin-top:1rem">Status prüfen:</p>
+    <p class="label" style="margin-top:1rem">Status pr&uuml;fen:</p>
     <pre>curl http://76.13.138.73:8000/status/&lt;scan_id&gt;</pre>
     <p class="label" style="margin-top:1rem">PDF downloaden:</p>
     <pre>curl http://76.13.138.73:8000/dossier/latest -o dossier.pdf</pre>
   </div>
 
   <div class="card">
-    <h2>API Key einrichten</h2>
-    <p class="label">ANTHROPIC_API_KEY in .env eintragen:</p>
-    <pre>nano /opt/apexcore-mvp/.env
-
-# Dann Service neustarten:
-pkill -f "uvicorn main:app"
-cd /opt/apexcore-mvp
-nohup python3 -m uvicorn main:app \
-  --host 0.0.0.0 --port 8000 \
-  > /var/log/apexcore-mvp.log 2>&1 &</pre>
+    <h2>CMD API</h2>
+    <p class="label">Webhook-Gateway auf Port 7070</p>
+    <br>
+    <div class="endpoint"><span class="method get">GET</span>  <code>/health</code> &mdash; Status</div>
+    <div class="endpoint"><span class="method post">POST</span> <code>/deploy</code> &mdash; Deploy ausl&ouml;sen</div>
+    <br>
+    <p class="label">Logs:</p>
+    <pre>journalctl -u cmd-api -f
+tail -f /var/log/cmd-api-deploy.log</pre>
   </div>
 
   <div class="card">
     <h2>Logs</h2>
     <pre>tail -f /var/log/apexcore-mvp.log
-tail -f /var/log/cmd-api.log</pre>
+journalctl -u cmd-api -f</pre>
     <br>
     <p class="label">PDF-Ausgaben:</p>
     <p class="value"><code>/opt/apexcore-mvp/output/</code></p>
@@ -144,7 +143,7 @@ tail -f /var/log/cmd-api.log</pre>
 
 </div>
 
-<footer>ApexCore Group d.o.o. Beograd &mdash; Topčiderska 14</footer>
+<footer>ApexCore Group d.o.o. Beograd &mdash; Top&#269;iderska 14</footer>
 
 </body>
 </html>
