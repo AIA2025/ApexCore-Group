@@ -93,5 +93,6 @@ services:
 volumes:
   n8n_data:
     name: n8n_data
+    external: true  # pre-existing volume with encryption key; compose doesn't own lifecycle
   paperclip_data:
     name: paperclip_data

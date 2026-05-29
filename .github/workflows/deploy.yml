@@ -58,24 +58,26 @@ jobs:
             chmod +x /srv/apexcore/scripts/*.sh 2>/dev/null || true
             echo "✅ Files extracted to /srv/apexcore/"
 
-            # ── Caddy config ──────────────────────────────────────────────
-            CADDY_OLD=/opt/openclaw/reverse-proxy/Caddyfile
-            CADDY_NEW=/srv/apexcore/infra-compose/Caddyfile
+            # ── nginx reverse proxy config ────────────────────────────────
+            # Caddy is profile-gated (profiles: [caddy]) — nginx handles TLS on this VPS.
+            NGINX_CONF=/etc/nginx/sites-available/apexcore.conf
+            NGINX_LINK=/etc/nginx/sites-enabled/apexcore.conf
             TS=$(date +%Y%m%d_%H%M%S)
 
-            # Backup then sync old path (running container still mounts it)
-            if [ -f "$CADDY_OLD" ]; then
-              cp "$CADDY_OLD" "/srv/apexcore/backups/Caddyfile.bak.$TS"
-              cp "$CADDY_NEW" "$CADDY_OLD"
+            if command -v nginx &>/dev/null; then
+              cp /srv/apexcore/infra-compose/nginx-vhost.conf "$NGINX_CONF"
+              ln -sf "$NGINX_CONF" "$NGINX_LINK"
+              nginx -t 2>&1 | tail -3
+              nginx -s reload
+              echo "✅ nginx vhost deployed and reloaded"
+            else
+              echo "⚠️  nginx not found — skipping vhost deploy"
             fi
 
-            # Reload if caddy is running
-            if docker inspect caddy &>/dev/null 2>&1; then
-              docker exec caddy caddy validate --config /etc/caddy/Caddyfile 2>&1 | tail -3
-              docker exec caddy caddy reload --config /etc/caddy/Caddyfile
-              echo "✅ Caddy reloaded"
-            else
-              echo "⚠️  Caddy not running — run scripts/stack-start.sh to start"
+            # Backup Caddyfile for reference (historical compat)
+            CADDY_OLD=/opt/openclaw/reverse-proxy/Caddyfile
+            if [ -f "$CADDY_OLD" ]; then
+              cp "$CADDY_OLD" "/srv/apexcore/backups/Caddyfile.bak.$TS" 2>/dev/null || true
             fi
 
             # ── Dashboard (legacy path kept in sync) ──────────────────────
@@ -105,6 +107,7 @@ jobs:
             fi
 
             # ── Docker Compose stacks (up -d, no recreation unless changed) ─
+            # infra-compose: Caddy is profile-gated (profiles: [caddy]) — nginx is the reverse proxy.
             cd /srv/apexcore
             if docker network inspect ai_net &>/dev/null 2>&1; then
               docker compose -f ai-stack/docker-compose.yml         up -d --remove-orphans 2>&1 | tail -5

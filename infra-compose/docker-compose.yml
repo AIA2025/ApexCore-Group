@@ -23,6 +23,8 @@ services:
     image: caddy:2-alpine
     container_name: caddy
     restart: unless-stopped
+    profiles:
+      - caddy  # disabled by default — nginx on the VPS host handles TLS termination
     ports:
       - "80:80"
       - "443:443"
