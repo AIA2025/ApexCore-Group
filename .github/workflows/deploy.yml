@@ -8,111 +8,31 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Trigger VPS deploy webhook
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          echo "Triggering deploy for branch: $BRANCH"
 
-      # ── Copy files to VPS ───────────────────────────────────────────
-      - name: Copy scanner files to VPS
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: 76.13.138.73
-          username: root
-          key: ${{ secrets.VPS_DEPLOY_KEY }}
-          port: 22
-          source: "apexcore-mvp/main.py,apexcore-mvp/requirements.txt,cmd-api/server.py,dashboard/index.html"
-          target: /tmp/apexcore-deploy
-          strip_components: 0
+          HTTP=$(curl -s -o /tmp/resp.json -w "%{http_code}" \
+            -X POST http://76.13.138.73:7070/deploy \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.CMD_API_TOKEN }}" \
+            -d "{\"branch\":\"$BRANCH\"}" \
+            --connect-timeout 10 --max-time 15)
 
-      # ── Run deploy script on VPS ──────────────────────────────────
-      - name: Deploy to VPS via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: 76.13.138.73
-          username: root
-          key: ${{ secrets.VPS_DEPLOY_KEY }}
-          port: 22
-          debug: true
-          command_timeout: 15m
-          script: |
-            set -e
+          echo "Webhook response ($HTTP): $(cat /tmp/resp.json)"
 
-            # ── Dashboard ────────────────────────────────────────────
-            mkdir -p /opt/apexcore-dashboard
-            if [ -f /tmp/apexcore-deploy/dashboard/index.html ]; then
-              cp /tmp/apexcore-deploy/dashboard/index.html /opt/apexcore-dashboard/index.html
-              echo "Dashboard updated"
-            fi
+          if [ "$HTTP" != "202" ]; then
+            echo "Webhook failed with HTTP $HTTP"
+            exit 1
+          fi
 
-            # ── cmd-api ──────────────────────────────────────────────────
-            mkdir -p /opt/apexcore/cmd-api
-            if [ -f /tmp/apexcore-deploy/cmd-api/server.py ]; then
-              cp /tmp/apexcore-deploy/cmd-api/server.py /opt/apexcore/cmd-api/server.py
-              pkill -f "cmd-api/server.py" 2>/dev/null || true
-              sleep 1
-              nohup python3 /opt/apexcore/cmd-api/server.py > /var/log/cmd-api.log 2>&1 &
-              echo "cmd-api started on port 7070"
-            fi
+          echo "Waiting 60s for VPS to redeploy..."
+          sleep 60
 
-            # ── ApexCore MVP Scanner ─────────────────────────────────────
-            mkdir -p /opt/apexcore-mvp/output
-
-            cp /tmp/apexcore-deploy/apexcore-mvp/main.py /opt/apexcore-mvp/main.py
-            cp /tmp/apexcore-deploy/apexcore-mvp/requirements.txt /opt/apexcore-mvp/requirements.txt
-            echo "Scanner files copied"
-
-            # Install Python dependencies
-            pip3 install -r /opt/apexcore-mvp/requirements.txt \
-              --break-system-packages -q 2>&1 | tail -5
-            echo "Python deps installed"
-
-            # Install Playwright Chromium (cached after first run)
-            if [ ! -d "$HOME/.cache/ms-playwright" ] || \
-               [ -z "$(ls -A $HOME/.cache/ms-playwright 2>/dev/null)" ]; then
-              echo "Installing Playwright Chromium..."
-              python3 -m playwright install chromium 2>&1 | tail -10
-              python3 -m playwright install-deps chromium 2>&1 | tail -5 || true
-              echo "Playwright Chromium installed"
-            else
-              echo "Playwright Chromium already cached"
-            fi
-
-            # Create .env only if missing (keeps existing secrets)
-            if [ ! -f /opt/apexcore-mvp/.env ]; then
-              python3 -c "
-contents = 'ANTHROPIC_API_KEY=PLACEHOLDER_MARJAN_TRAEGT_EIN\nSUPABASE_URL=PLACEHOLDER_MARJAN_TRAEGT_EIN\nSUPABASE_KEY=PLACEHOLDER_MARJAN_TRAEGT_EIN\nGPTZERO_API_KEY=placeholder\nCOPYLEAKS_API_KEY=placeholder\nWINSTON_API_KEY=placeholder\nHERMES_URL=http://localhost:32771/api/chat\nOUTPUT_DIR=/opt/apexcore-mvp/output\n'
-open('/opt/apexcore-mvp/.env', 'w').write(contents)
-"
-              echo ".env created with placeholders"
-            else
-              echo ".env already exists, keeping existing keys"
-            fi
-
-            # Restart scanner
-            pkill -f "uvicorn main:app" 2>/dev/null || true
-            sleep 2
-
-            cd /opt/apexcore-mvp
-            nohup python3 -m uvicorn main:app \
-              --host 0.0.0.0 --port 8000 --log-level info \
-              > /var/log/apexcore-mvp.log 2>&1 &
-            sleep 5
-
-            curl -sf http://localhost:8000/health \
-              && echo "Scanner running on :8000" \
-              || (echo "Health check FAILED" && tail -30 /var/log/apexcore-mvp.log && exit 1)
-
-            rm -rf /tmp/apexcore-deploy
-
-            # ── Maintenance ───────────────────────────────────────────────
-            docker stop n8n-lx1z-n8n-1 2>/dev/null && echo "old n8n stopped" || true
-
-            CRON="30 2 * * * /root/scripts/notion-backup.sh >> /root/logs/notion-backup.log 2>&1"
-            crontab -l 2>/dev/null | grep -q "notion-backup" || \
-              (crontab -l 2>/dev/null; echo "$CRON") | crontab -
-
-            echo ""
-            echo "Deploy complete"
-            echo "  Health:  http://76.13.138.73:8000/health"
-            echo "  Dossier: http://76.13.138.73:8000/dossier/latest"
+          curl -sf http://76.13.138.73:8000/health \
+            && echo "Scanner is healthy" \
+            || echo "Scanner not yet ready (check /var/log/apexcore-mvp.log on VPS)"
 
       - name: Add DNS Records via Porkbun API
         if: ${{ env.PB_KEY != '' }}
