@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ApexCore Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 2rem;
+      min-height: 100vh;
+    }
+    header {
+      border-bottom: 1px solid #1e293b;
+      padding-bottom: 1rem;
+      margin-bottom: 2rem;
+    }
+    header h1 { font-size: 1.5rem; color: #f8fafc; }
+    .badge {
+      display: inline-block;
+      padding: .15em .5em;
+      border-radius: 4px;
+      background: #1d4ed8;
+      color: #bfdbfe;
+      font-size: .75em;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; }
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 10px;
+      padding: 1.5rem;
+    }
+    .card h2 { font-size: 1rem; color: #94a3b8; margin-bottom: 1rem; text-transform: uppercase; letter-spacing: .05em; }
+    .endpoint { margin: .5rem 0; }
+    .method {
+      display: inline-block;
+      padding: .1em .4em;
+      border-radius: 3px;
+      font-size: .75em;
+      font-weight: 700;
+      font-family: monospace;
+      margin-right: .4em;
+    }
+    .get  { background: #065f46; color: #6ee7b7; }
+    .post { background: #7c3aed; color: #ddd6fe; }
+    code {
+      font-family: monospace;
+      font-size: .85em;
+      background: #0f172a;
+      padding: .1em .3em;
+      border-radius: 3px;
+    }
+    pre {
+      font-family: monospace;
+      font-size: .8em;
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 1rem;
+      overflow-x: auto;
+      color: #94a3b8;
+      line-height: 1.6;
+      margin-top: .75rem;
+    }
+    a { color: #60a5fa; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .status-dot {
+      display: inline-block;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #22c55e;
+      margin-right: .4em;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: .4; }
+    }
+    .label { color: #94a3b8; font-size: .85rem; }
+    .value { color: #f8fafc; font-weight: 500; }
+    footer { margin-top: 3rem; color: #475569; font-size: .8rem; text-align: center; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>ApexCore Dashboard</h1>
+  <p class="label"><span class="status-dot"></span>EU AI Act Art. 50 Enforcement &nbsp;<span class="badge">MVP</span></p>
+</header>
+
+<div class="grid">
+
+  <div class="card">
+    <h2>Scanner API</h2>
+    <p class="label">Endpunkt</p>
+    <p class="value"><a href="http://76.13.138.73:8000">http://76.13.138.73:8000</a></p>
+    <br>
+    <div class="endpoint"><span class="method get">GET</span>  <code>/health</code> — Systemstatus</div>
+    <div class="endpoint"><span class="method post">POST</span> <code>/scan</code> — Scan starten</div>
+    <div class="endpoint"><span class="method get">GET</span>  <code>/status/{scan_id}</code> — Status</div>
+    <div class="endpoint"><span class="method get">GET</span>  <code>/dossier/{scan_id}</code> — PDF herunterladen</div>
+    <div class="endpoint"><span class="method get">GET</span>  <code>/dossier/latest</code> — Letztes PDF</div>
+  </div>
+
+  <div class="card">
+    <h2>Schnelltest</h2>
+    <p class="label">Scan starten:</p>
+    <pre>curl -X POST http://76.13.138.73:8000/scan \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com"}'</pre>
+    <p class="label" style="margin-top:1rem">Status prüfen:</p>
+    <pre>curl http://76.13.138.73:8000/status/&lt;scan_id&gt;</pre>
+    <p class="label" style="margin-top:1rem">PDF downloaden:</p>
+    <pre>curl http://76.13.138.73:8000/dossier/latest -o dossier.pdf</pre>
+  </div>
+
+  <div class="card">
+    <h2>API Key einrichten</h2>
+    <p class="label">ANTHROPIC_API_KEY in .env eintragen:</p>
+    <pre>nano /opt/apexcore-mvp/.env
+
+# Dann Service neustarten:
+pkill -f "uvicorn main:app"
+cd /opt/apexcore-mvp
+nohup python3 -m uvicorn main:app \
+  --host 0.0.0.0 --port 8000 \
+  > /var/log/apexcore-mvp.log 2>&1 &</pre>
+  </div>
+
+  <div class="card">
+    <h2>Logs</h2>
+    <pre>tail -f /var/log/apexcore-mvp.log
+tail -f /var/log/cmd-api.log</pre>
+    <br>
+    <p class="label">PDF-Ausgaben:</p>
+    <p class="value"><code>/opt/apexcore-mvp/output/</code></p>
+  </div>
+
+</div>
+
+<footer>ApexCore Group d.o.o. Beograd &mdash; Topčiderska 14</footer>
+
+</body>
+</html>
