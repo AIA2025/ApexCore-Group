@@ -8,9 +8,7 @@
         "httpMethod": "POST",
         "path": "dispatch",
         "responseMode": "responseNode",
-        "options": {
-          "rawBody": false
-        }
+        "options": { "rawBody": false }
       },
       "id": "wh-dispatch-receiver",
       "name": "Webhook — POST /webhook/dispatch",
@@ -21,13 +19,34 @@
     },
     {
       "parameters": {
-        "jsCode": "// Normalize incoming payload — accept both Open WebUI format and raw format\nconst body = $input.first().json.body ?? $input.first().json;\n\n// Open WebUI sends: { message: '...', model: '...', session_id: '...' }\n// Direct call sends: { task: '...', options: {} }\nconst task = body.task ?? body.message ?? body.content ?? '';\nconst options = body.options ?? {};\n\nif (!task || task.trim() === '') {\n  throw new Error('Missing task/message field in request body');\n}\n\nreturn [{ json: { task: task.trim(), options } }];"
+        "jsCode": "// Normalize payload — accept Open WebUI format {message} or direct {task}\nconst body = $input.first().json.body ?? $input.first().json;\nconst task = (body.task ?? body.message ?? body.content ?? '').trim();\nconst options = body.options ?? {};\nreturn [{ json: { task, options, valid: task.length > 0 } }];"
       },
-      "id": "code-normalize-input",
+      "id": "code-normalize",
       "name": "Payload normalisieren",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false },
+          "conditions": [
+            {
+              "id": "check-task",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "if-task-valid",
+      "name": "Task vorhanden?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [750, 300]
     },
     {
       "parameters": {
@@ -36,14 +55,8 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $env.DISPATCHER_TOKEN }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
+            { "name": "Authorization", "value": "=Bearer {{ $env.DISPATCHER_TOKEN }}" },
+            { "name": "Content-Type",  "value": "application/json" }
           ]
         },
         "sendBody": true,
@@ -52,56 +65,49 @@
         "jsonBody": "={{ JSON.stringify({ task: $json.task, options: $json.options }) }}",
         "options": {
           "timeout": 120000,
-          "response": {
-            "response": {
-              "neverError": false
-            }
-          }
+          "response": { "response": { "neverError": true } }
         }
       },
-      "id": "http-call-dispatcher",
+      "id": "http-dispatcher",
       "name": "Hermes Dispatcher aufrufen",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [750, 300]
+      "position": [1000, 220],
+      "continueOnFail": true
     },
     {
       "parameters": {
-        "jsCode": "const d = $input.first().json;\n\n// Extract the usable response text for Open WebUI\nconst responseText = d?.result?.response\n  ?? d?.result?.n8n?.response\n  ?? d?.result?.error\n  ?? 'Hermes returned no response.';\n\nreturn [{\n  json: {\n    // Open WebUI compatible response\n    response: responseText,\n    // Full dispatcher metadata\n    task_id:      d?.task_id,\n    status:       d?.status,\n    intent:       d?.intent,\n    worker:       d?.worker,\n    started_at:   d?.started_at,\n    completed_at: d?.completed_at,\n  }\n}];"
+        "jsCode": "const d = $input.first().json;\nif (d.error) {\n  return [{ json: { response: `Dispatcher error: ${d.error}`, status: 'BLOCKED', intent: null, worker: null } }];\n}\nconst responseText = d?.result?.response ?? d?.result?.n8n?.response ?? d?.result?.error ?? 'Hermes returned no response.';\nreturn [{ json: { response: responseText, task_id: d?.task_id, status: d?.status, intent: d?.intent, worker: d?.worker, started_at: d?.started_at, completed_at: d?.completed_at } }];"
       },
-      "id": "code-format-response",
+      "id": "code-format",
       "name": "Response formatieren",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1000, 300]
+      "position": [1250, 220]
     },
     {
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ JSON.stringify($json) }}",
-        "options": {
-          "responseCode": 200
-        }
+        "options": { "responseCode": 200 }
       },
-      "id": "resp-to-webui",
-      "name": "Respond to Open WebUI",
+      "id": "resp-ok",
+      "name": "Respond to WebUI",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [1250, 300]
+      "position": [1500, 220]
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify({ error: $json.message ?? 'Dispatcher error', status: 'BLOCKED' }) }}",
-        "options": {
-          "responseCode": 500
-        }
+        "responseBody": "={{ JSON.stringify({ error: 'Missing task or message field', status: 'BLOCKED' }) }}",
+        "options": { "responseCode": 400 }
       },
       "id": "resp-error",
-      "name": "Error Response",
+      "name": "Error — Missing Task",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [1250, 500]
+      "position": [1000, 420]
     }
   ],
   "connections": {
@@ -109,16 +115,19 @@
       "main": [[{ "node": "Payload normalisieren", "type": "main", "index": 0 }]]
     },
     "Payload normalisieren": {
+      "main": [[{ "node": "Task vorhanden?", "type": "main", "index": 0 }]]
+    },
+    "Task vorhanden?": {
       "main": [
         [{ "node": "Hermes Dispatcher aufrufen", "type": "main", "index": 0 }],
-        [{ "node": "Error Response", "type": "main", "index": 0 }]
+        [{ "node": "Error — Missing Task",        "type": "main", "index": 0 }]
       ]
     },
     "Hermes Dispatcher aufrufen": {
       "main": [[{ "node": "Response formatieren", "type": "main", "index": 0 }]]
     },
     "Response formatieren": {
-      "main": [[{ "node": "Respond to Open WebUI", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Respond to WebUI", "type": "main", "index": 0 }]]
     }
   }
 }

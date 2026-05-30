@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paperclip — ApexCore Control Plane</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", sans-serif;
+  background: #0c0c10;
+  color: #d0d0d8;
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  grid-template-rows: 52px 1fr;
+  height: 100vh;
+  overflow: hidden;
+}
+header {
+  grid-column: 1 / -1;
+  background: #0e0e16;
+  border-bottom: 1px solid #1e1e28;
+  display: flex;
+  align-items: center;
+  padding: 0 1.5rem;
+  gap: 0.75rem;
+}
+header h1 { font-size: 1rem; font-weight: 700; color: #f0f0f8; letter-spacing: -.01em; }
+.badge {
+  font-size: 0.6rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  background: #141424; color: #5050a0; padding: 2px 7px; border-radius: 4px;
+  border: 1px solid #222238;
+}
+.header-sep { flex: 1; }
+.header-meta { font-size: 0.7rem; color: #2a2a3a; }
+
+nav {
+  background: #0a0a12;
+  border-right: 1px solid #1a1a24;
+  overflow-y: auto;
+  padding: 1rem 0 2rem;
+}
+.nav-label {
+  font-size: 0.6rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+  color: #2a2a3a; padding: 0.75rem 1.25rem 0.3rem;
+}
+.folder { margin: 1px 0.5rem; }
+.folder-btn {
+  display: flex; align-items: center; gap: 0.5rem; width: 100%;
+  padding: 0.38rem 0.75rem; border: none; background: transparent;
+  color: #666; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+  border-radius: 5px; text-align: left; transition: all 0.12s;
+}
+.folder-btn:hover { background: #141420; color: #a0a0c0; }
+.folder-btn.open { color: #8888c0; }
+.chevron { font-size: 0.55rem; opacity: 0.5; transition: transform 0.15s; flex-shrink: 0; }
+.folder-btn.open .chevron { transform: rotate(90deg); opacity: 0.8; }
+.doc-list { display: none; padding-left: 1.75rem; }
+.folder.open .doc-list { display: block; }
+.doc-btn {
+  display: block; width: 100%; padding: 0.28rem 0.75rem; margin: 1px 0;
+  border: none; background: transparent; color: #555; font-size: 0.78rem;
+  cursor: pointer; border-radius: 4px; text-align: left;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: all 0.12s;
+}
+.doc-btn:hover { background: #141420; color: #9090b8; }
+.doc-btn.active { background: #16162a; color: #b0b0e0; }
+.empty-note { padding: 0.25rem 0.75rem; font-size: 0.72rem; color: #2a2a3a; font-style: italic; }
+
+main {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Welcome / grid view */
+#welcome {
+  padding: 2.5rem 3rem;
+}
+#welcome h2 { font-size: 1.3rem; color: #e8e8f4; margin-bottom: 0.4rem; }
+#welcome p { color: #444; font-size: 0.85rem; line-height: 1.6; margin-bottom: 2rem; }
+.folder-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.75rem;
+}
+.folder-card {
+  background: #0e0e18; border: 1px solid #1a1a28;
+  border-radius: 8px; padding: 1.25rem 1rem;
+  cursor: pointer; transition: border-color 0.15s, background 0.15s;
+}
+.folder-card:hover { border-color: #2a2a50; background: #0f0f1e; }
+.card-icon { font-size: 1.3rem; margin-bottom: 0.6rem; }
+.card-name { font-size: 0.8rem; font-weight: 600; color: #9090b8; }
+.card-count { font-size: 0.68rem; color: #333; margin-top: 0.2rem; }
+
+/* Doc reader */
+#reader {
+  display: none;
+  flex: 1;
+  padding: 2.5rem 3.5rem;
+  max-width: 800px;
+}
+#reader.visible { display: block; }
+#reader-path {
+  font-size: 0.62rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: #333; margin-bottom: 1.75rem; cursor: pointer;
+}
+#reader-path:hover { color: #555; }
+#reader-path::before { content: "← "; }
+
+/* Rendered markdown */
+#md h1 { font-size: 1.5rem; color: #f0f0f8; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #1a1a28; }
+#md h2 { font-size: 1.1rem; color: #c8c8e8; margin: 1.75rem 0 0.6rem; }
+#md h3 { font-size: 0.95rem; color: #a0a0c8; margin: 1.25rem 0 0.4rem; }
+#md p { color: #888; font-size: 0.88rem; line-height: 1.75; margin-bottom: 0.75rem; }
+#md a { color: #5858b0; text-decoration: none; }
+#md a:hover { text-decoration: underline; }
+#md code {
+  background: #141420; color: #7878c8; padding: 2px 6px;
+  border-radius: 3px; font-size: 0.82em;
+  font-family: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+}
+#md pre {
+  background: #0d0d18; border: 1px solid #1a1a28; border-radius: 6px;
+  padding: 1.25rem; overflow-x: auto; margin-bottom: 1rem;
+}
+#md pre code { background: none; padding: 0; color: #9090c0; font-size: 0.82rem; }
+#md blockquote {
+  border-left: 3px solid #22223a; padding: 0.5rem 1rem;
+  color: #555; margin: 0 0 0.75rem;
+}
+#md table { border-collapse: collapse; width: 100%; margin-bottom: 1rem; font-size: 0.82rem; }
+#md th { text-align: left; padding: 0.45rem 0.9rem; background: #0e0e18; color: #6060a0; font-weight: 600; border-bottom: 1px solid #1a1a28; }
+#md td { padding: 0.4rem 0.9rem; border-bottom: 1px solid #131320; color: #707080; }
+#md tr:hover td { background: #0f0f1a; }
+#md ul, #md ol { margin: 0 0 0.75rem 1.4rem; color: #888; font-size: 0.88rem; line-height: 1.7; }
+#md hr { border: none; border-top: 1px solid #1a1a28; margin: 1.5rem 0; }
+#md strong { color: #b0b0d0; }
+#md img { max-width: 100%; border-radius: 6px; }
+
+.loading-state { color: #333; font-size: 0.82rem; padding: 1rem 0; }
+.error-state {
+  background: #120f0a; border: 1px solid #2a2010; border-radius: 6px;
+  padding: 1.25rem; color: #806040; font-size: 0.82rem;
+}
+.error-state strong { color: #a07840; display: block; margin-bottom: 0.4rem; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📎 Paperclip</h1>
+  <div class="badge">Control Plane V1</div>
+  <div class="header-sep"></div>
+  <div class="header-meta">ApexCore / Creator OS</div>
+</header>
+
+<nav id="sidebar"></nav>
+
+<main id="main">
+  <div id="welcome">
+    <h2>Control Plane</h2>
+    <p>Zentrale Dokumentations- und Operations-Drehscheibe für ApexCore. Wähle einen Ordner.</p>
+    <div class="folder-grid" id="grid"></div>
+  </div>
+  <div id="reader">
+    <div id="reader-path" onclick="showWelcome()">Zurück zur Übersicht</div>
+    <div id="md"></div>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/marked@9/marked.min.js"></script>
+<script>
+const FOLDERS = [
+  {
+    id: "f0", icon: "📋", name: "00-Runbooks",
+    docs: [
+      { label: "Orchestration Runbook V1",      file: "RUNBOOK_ORCHESTRATION_V1.md" },
+      { label: "Stack Status",                  file: "APEXCORE_STACK_STATUS.md" },
+      { label: "Paperclip Control Plane V2",    file: "PAPERCLIP_CONTROL_PLANE_V2.md" },
+    ]
+  },
+  {
+    id: "f1", icon: "🏗️", name: "01-Infra",
+    docs: [
+      { label: "Orchestration Architecture V1", file: "APEXCORE_ORCHESTRATION_V1.md" },
+      { label: "Hermes Flow — Technical V1",    file: "HERMES_FLOW_TECHNICAL_V1.md" },
+      { label: "Hermes Role Profile",           file: "HERMES_ROLE_PROFILE.md" },
+      { label: "Org Model",                     file: "APEXCORE_ORG_MODEL.md" },
+      { label: "Caddy / Reverse Proxy",         file: "README_CADDY.md" },
+    ]
+  },
+  {
+    id: "f2", icon: "📦", name: "02-Products",
+    docs: []
+  },
+  {
+    id: "f3", icon: "💼", name: "03-Sales",
+    docs: []
+  },
+  {
+    id: "f4", icon: "⚖️", name: "04-Legal-AI-Act",
+    docs: []
+  },
+  {
+    id: "f5", icon: "🔄", name: "05-Sync-Briefings",
+    docs: [
+      { label: "Sync-Briefing 29.05.2026",      file: "SYNC_BRIEFING_2026-05-29.md" },
+    ]
+  },
+  {
+    id: "f6", icon: "📐", name: "06-Templates",
+    docs: [
+      { label: "Notion Integration Plan",       file: "NOTION_INTEGRATION_PLAN.md" },
+      { label: "Paperclip Prep Checklist",      file: "PAPERCLIP_PREP.md" },
+    ]
+  },
+];
+
+let activeDoc = null;
+let activeFolder = null;
+
+function buildSidebar() {
+  const nav = document.getElementById('sidebar');
+  const grid = document.getElementById('grid');
+
+  nav.innerHTML = '<div class="nav-label">Workspace</div>';
+
+  FOLDERS.forEach(f => {
+    // Sidebar folder
+    const wrap = document.createElement('div');
+    wrap.className = 'folder';
+    wrap.id = 'folder-' + f.id;
+
+    const btn = document.createElement('button');
+    btn.className = 'folder-btn';
+    btn.innerHTML = `<span class="chevron">▶</span>${f.icon} ${f.name}`;
+    btn.onclick = () => toggleFolder(f.id);
+    wrap.appendChild(btn);
+
+    const list = document.createElement('div');
+    list.className = 'doc-list';
+    if (f.docs.length === 0) {
+      list.innerHTML = '<div class="empty-note">Keine Dokumente</div>';
+    } else {
+      f.docs.forEach(d => {
+        const db = document.createElement('button');
+        db.className = 'doc-btn';
+        db.id = `db-${f.id}-${d.file}`;
+        db.textContent = d.label;
+        db.onclick = () => openDoc(f, d);
+        list.appendChild(db);
+      });
+    }
+    wrap.appendChild(list);
+    nav.appendChild(wrap);
+
+    // Grid card
+    const card = document.createElement('div');
+    card.className = 'folder-card';
+    card.innerHTML = `
+      <div class="card-icon">${f.icon}</div>
+      <div class="card-name">${f.name}</div>
+      <div class="card-count">${f.docs.length} Dokument${f.docs.length !== 1 ? 'e' : ''}</div>`;
+    card.onclick = () => { toggleFolder(f.id, true); showWelcome(false); };
+    grid.appendChild(card);
+  });
+}
+
+function toggleFolder(id, forceOpen) {
+  const el = document.getElementById('folder-' + id);
+  if (!el) return;
+  const isOpen = el.classList.contains('open');
+  const shouldOpen = forceOpen !== undefined ? forceOpen : !isOpen;
+  el.classList.toggle('open', shouldOpen);
+  el.querySelector('.folder-btn').classList.toggle('open', shouldOpen);
+}
+
+function showWelcome(show = true) {
+  document.getElementById('welcome').style.display = show ? '' : 'none';
+  document.getElementById('reader').classList.toggle('visible', !show);
+  if (show && activeDoc) {
+    document.getElementById(`db-${activeDoc.folderId}-${activeDoc.file}`)
+      ?.classList.remove('active');
+    activeDoc = null;
+  }
+}
+
+async function openDoc(folder, doc) {
+  if (activeDoc) {
+    document.getElementById(`db-${activeDoc.folderId}-${activeDoc.file}`)
+      ?.classList.remove('active');
+  }
+  activeDoc = { folderId: folder.id, file: doc.file };
+  document.getElementById(`db-${folder.id}-${doc.file}`)?.classList.add('active');
+
+  showWelcome(false);
+  document.getElementById('reader-path').textContent =
+    `${folder.name} / ${doc.label}`;
+  document.getElementById('reader-path').onclick = showWelcome;
+  const md = document.getElementById('md');
+  md.innerHTML = '<div class="loading-state">Lade Dokument…</div>';
+
+  try {
+    const r = await fetch(`/docs/${doc.file}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const text = await r.text();
+    md.innerHTML = marked.parse(text);
+  } catch (e) {
+    md.innerHTML = `<div class="error-state"><strong>Dokument nicht verfügbar</strong>${e.message}<br><small style="color:#555;margin-top:.25rem;display:block">/docs/${doc.file}</small></div>`;
+  }
+}
+
+buildSidebar();
+</script>
+</body>
+</html>

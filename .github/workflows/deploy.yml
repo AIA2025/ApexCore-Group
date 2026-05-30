@@ -85,6 +85,10 @@ jobs:
             cp /srv/apexcore/dashboard/index.html /opt/apexcore-dashboard/index.html
             echo "✅ Dashboard updated"
 
+            # ── Paperclip portal ──────────────────────────────────────────
+            mkdir -p /srv/apexcore/dashboard/paperclip
+            echo "✅ Paperclip portal ready at dashboard/paperclip/"
+
             # ── cmd-api ───────────────────────────────────────────────────
             pkill -f "cmd-api/server.py" 2>/dev/null || true
             sleep 1
