@@ -1,0 +1,59 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [main, "claude/**"]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger VPS deploy webhook
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          echo "Triggering deploy for branch: $BRANCH"
+
+          # cmd-api health check first
+          CMD_HEALTH=$(curl -sf --connect-timeout 5 http://76.13.138.73:7070/health || echo "unreachable")
+          echo "cmd-api health: $CMD_HEALTH"
+
+          HTTP=$(curl -s -o /tmp/resp.json -w "%{http_code}" \
+            -X POST http://76.13.138.73:7070/deploy \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.CMD_API_TOKEN }}" \
+            -d "{\"branch\":\"$BRANCH\"}" \
+            --connect-timeout 10 --max-time 15)
+
+          echo "Webhook response ($HTTP): $(cat /tmp/resp.json)"
+
+          if [ "$HTTP" != "202" ]; then
+            echo "::error::Webhook failed (HTTP $HTTP). Is cmd-api running on VPS:7070 with /deploy endpoint?"
+            echo "Bootstrap: bash <(curl -fsSL https://raw.githubusercontent.com/AIA2025/apexcore/${BRANCH}/scripts/bootstrap.sh)"
+            exit 1
+          fi
+
+          echo "Waiting 60s for VPS to redeploy..."
+          sleep 60
+
+          curl -sf http://76.13.138.73:8000/health \
+            && echo "Scanner is healthy" \
+            || echo "Scanner not yet ready (check /var/log/apexcore-mvp.log on VPS)"
+
+      - name: Add DNS Records via Porkbun API
+        if: ${{ env.PB_KEY != '' }}
+        env:
+          PB_KEY: ${{ secrets.PORKBUN_APIKEY }}
+          PB_SECRET: ${{ secrets.PORKBUN_SECRETKEY }}
+          DOMAIN: "apexcore.group"
+          VPS_IP: "76.13.138.73"
+        run: |
+          add_record() {
+            local name=$1
+            R=$(curl -s -X POST "https://api.porkbun.com/api/json/v3/dns/create/$DOMAIN" \
+              -H "Content-Type: application/json" \
+              -d "{\"apikey\":\"$PB_KEY\",\"secretapikey\":\"$PB_SECRET\",\"name\":\"$name\",\"type\":\"A\",\"content\":\"$VPS_IP\",\"ttl\":\"300\"}")
+            echo "$name: $(echo $R | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("status","?") + " " + str(d.get("id","")))')"
+          }
+          echo "Adding DNS A-records..."
+          for sub in n8n openwebui hermes dashboard paperclip scanner; do add_record "$sub"; done
+          echo "DNS update done"
