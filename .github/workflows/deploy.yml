@@ -3,180 +3,57 @@ name: Deploy to VPS
 on:
   push:
     branches: [main, "claude/**"]
-  workflow_dispatch:  # allow manual re-trigger from GitHub UI
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      # ── Package deploy artifacts ──────────────────────────────────────
-      # Single tar.gz is more reliable than multi-file scp-action source lists.
-      # Excludes: .git, .github/secrets, legacy docs, local-only files.
-      - name: Package deploy artifacts
+      - name: Trigger VPS deploy webhook
         run: |
-          tar -czf apexcore-deploy.tar.gz \
-            --exclude='.git' \
-            --exclude='.github' \
-            --exclude='docs/legacy' \
-            --exclude='backups' \
-            infra-compose \
-            ai-stack \
-            automation-stack \
-            cmd-api \
-            dashboard \
-            scripts \
-            docs \
-            n8n-workflows
-          echo "Package size: $(du -sh apexcore-deploy.tar.gz | cut -f1)"
+          BRANCH="${{ github.ref_name }}"
+          echo "Triggering deploy for branch: $BRANCH"
 
-      # ── Guard: skip VPS steps if deploy key is not configured ────────
-      - name: Check deploy secret
-        run: |
-          if [ -z "$KEY" ]; then
-            echo "::warning::VPS_DEPLOY_KEY secret is not set — skipping VPS deploy steps."
-            echo "  To enable: Settings → Secrets → Actions → New secret: VPS_DEPLOY_KEY"
-            echo "  Generate key on VPS: ssh-keygen -t ed25519 -f /root/.ssh/apexcore_deploy"
-            echo "  Add public key to VPS: cat /root/.ssh/apexcore_deploy.pub >> /root/.ssh/authorized_keys"
-          else
-            echo "VPS_DEPLOY_KEY is configured — proceeding with deploy"
+          # cmd-api health check first
+          CMD_HEALTH=$(curl -sf --connect-timeout 5 http://76.13.138.73:7070/health || echo "unreachable")
+          echo "cmd-api health: $CMD_HEALTH"
+
+          HTTP=$(curl -s -o /tmp/resp.json -w "%{http_code}" \
+            -X POST http://76.13.138.73:7070/deploy \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.CMD_API_TOKEN }}" \
+            -d "{\"branch\":\"$BRANCH\"}" \
+            --connect-timeout 10 --max-time 15)
+
+          echo "Webhook response ($HTTP): $(cat /tmp/resp.json)"
+
+          if [ "$HTTP" != "202" ]; then
+            echo "::error::Webhook failed (HTTP $HTTP). Is cmd-api running on VPS:7070 with /deploy endpoint?"
+            echo "Bootstrap: bash <(curl -fsSL https://raw.githubusercontent.com/AIA2025/apexcore/${BRANCH}/scripts/bootstrap.sh)"
+            exit 1
           fi
-        env:
-          KEY: ${{ secrets.VPS_DEPLOY_KEY }}
 
-      # ── Upload package to VPS ─────────────────────────────────────────
-      - name: Upload to VPS
-        if: ${{ secrets.VPS_DEPLOY_KEY != '' }}
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: 76.13.138.73
-          username: root
-          key: ${{ secrets.VPS_DEPLOY_KEY }}
-          source: "apexcore-deploy.tar.gz"
-          target: "/tmp/"
+          echo "Waiting 60s for VPS to redeploy..."
+          sleep 60
 
-      # ── Extract and apply on VPS ──────────────────────────────────────
-      - name: Apply config on VPS
-        if: ${{ secrets.VPS_DEPLOY_KEY != '' }}
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: 76.13.138.73
-          username: root
-          key: ${{ secrets.VPS_DEPLOY_KEY }}
-          script: |
-            set -e
+          curl -sf http://76.13.138.73:8000/health \
+            && echo "Scanner is healthy" \
+            || echo "Scanner not yet ready (check /var/log/apexcore-mvp.log on VPS)"
 
-            # ── Extract repo files ────────────────────────────────────────
-            mkdir -p /srv/apexcore/backups
-            tar xzf /tmp/apexcore-deploy.tar.gz -C /srv/apexcore/ --overwrite
-            rm -f /tmp/apexcore-deploy.tar.gz
-            chmod +x /srv/apexcore/scripts/*.sh 2>/dev/null || true
-            echo "✅ Files extracted to /srv/apexcore/"
-
-            # ── nginx reverse proxy config ────────────────────────────────
-            # Caddy is profile-gated (profiles: [caddy]) — nginx handles TLS on this VPS.
-            NGINX_CONF=/etc/nginx/sites-available/apexcore.conf
-            NGINX_LINK=/etc/nginx/sites-enabled/apexcore.conf
-            TS=$(date +%Y%m%d_%H%M%S)
-
-            if command -v nginx &>/dev/null; then
-              cp /srv/apexcore/infra-compose/nginx-vhost.conf "$NGINX_CONF"
-              ln -sf "$NGINX_CONF" "$NGINX_LINK"
-              nginx -t 2>&1 | tail -3
-              nginx -s reload
-              echo "✅ nginx vhost deployed and reloaded"
-            else
-              echo "⚠️  nginx not found — skipping vhost deploy"
-            fi
-
-            # Backup Caddyfile for reference (historical compat)
-            CADDY_OLD=/opt/openclaw/reverse-proxy/Caddyfile
-            if [ -f "$CADDY_OLD" ]; then
-              cp "$CADDY_OLD" "/srv/apexcore/backups/Caddyfile.bak.$TS" 2>/dev/null || true
-            fi
-
-            # ── Dashboard (legacy path kept in sync) ──────────────────────
-            mkdir -p /opt/apexcore-dashboard
-            cp /srv/apexcore/dashboard/index.html /opt/apexcore-dashboard/index.html
-            echo "✅ Dashboard updated"
-
-            # ── Paperclip portal ──────────────────────────────────────────
-            mkdir -p /srv/apexcore/dashboard/paperclip
-            echo "✅ Paperclip portal ready at dashboard/paperclip/"
-
-            # ── cmd-api ───────────────────────────────────────────────────
-            pkill -f "cmd-api/server.py" 2>/dev/null || true
-            sleep 1
-            CMD_TOKEN="${{ secrets.CMD_API_TOKEN }}" \
-              nohup python3 /srv/apexcore/cmd-api/server.py \
-              > /var/log/cmd-api.log 2>&1 &
-            echo "✅ cmd-api started on :7070"
-
-            # ── hermes dispatcher ─────────────────────────────────────────
-            pkill -f "hermes_dispatcher.py" 2>/dev/null || true
-            sleep 1
-            if [ -f /srv/apexcore/cmd-api/.env.dispatcher ]; then
-              set -a; source /srv/apexcore/cmd-api/.env.dispatcher; set +a
-              nohup python3 /srv/apexcore/cmd-api/hermes_dispatcher.py \
-                > /var/log/apexcore-dispatcher.log 2>&1 &
-              echo "✅ hermes dispatcher started on :7071"
-            else
-              echo "⚠️  /srv/apexcore/cmd-api/.env.dispatcher not found — dispatcher not started"
-              echo "    Run: cp /srv/apexcore/cmd-api/.env.dispatcher.example /srv/apexcore/cmd-api/.env.dispatcher"
-            fi
-
-            # ── Docker Compose stacks (up -d, no recreation unless changed) ─
-            # infra-compose: Caddy is profile-gated (profiles: [caddy]) — nginx is the reverse proxy.
-            # n8n_data is marked external: true — must exist before automation-stack starts.
-            cd /srv/apexcore
-            docker volume inspect n8n_data &>/dev/null || docker volume create n8n_data
-            if docker network inspect ai_net &>/dev/null 2>&1; then
-              docker compose -f ai-stack/docker-compose.yml         up -d --remove-orphans 2>&1 | tail -5
-              docker compose -f automation-stack/docker-compose.yml up -d --remove-orphans 2>&1 | tail -5
-              docker compose -f infra-compose/docker-compose.yml    up -d --remove-orphans 2>&1 | tail -5
-              echo "✅ Compose stacks refreshed"
-            else
-              echo "⚠️  ai_net not found — run scripts/stack-start.sh to initialise stacks"
-            fi
-
-            # ── Legacy n8n cleanup ────────────────────────────────────────
-            docker stop n8n-lx1z-n8n-1 2>/dev/null && echo "✅ legacy n8n stopped" || true
-
-            # ── Notion backup cron ────────────────────────────────────────
-            CRON="30 2 * * * /root/scripts/notion-backup.sh >> /root/logs/notion-backup.log 2>&1"
-            crontab -l 2>/dev/null | grep -q "notion-backup" || \
-              (crontab -l 2>/dev/null; echo "$CRON") | crontab -
-            echo "✅ Notion backup cron active"
-
-            echo ""
-            echo "🚀 Deploy complete: $(hostname) @ $(date)"
-            docker ps --format "  {{.Names}}\t{{.Status}}" 2>/dev/null | sort || true
-
-      # ── DNS Records via Porkbun ───────────────────────────────────────
-      # Runs on every deploy. Porkbun API is idempotent (duplicate records are ignored).
-      # Skips gracefully if PORKBUN_APIKEY secret is not set.
-      - name: Update DNS Records via Porkbun
+      - name: Add DNS Records via Porkbun API
+        if: ${{ env.PB_KEY != '' }}
         env:
           PB_KEY: ${{ secrets.PORKBUN_APIKEY }}
           PB_SECRET: ${{ secrets.PORKBUN_SECRETKEY }}
           DOMAIN: "apexcore.group"
           VPS_IP: "76.13.138.73"
         run: |
-          if [ -z "$PB_KEY" ]; then
-            echo "PORKBUN_APIKEY not configured — skipping DNS update"
-            exit 0
-          fi
           add_record() {
             local name=$1
             R=$(curl -s -X POST "https://api.porkbun.com/api/json/v3/dns/create/$DOMAIN" \
               -H "Content-Type: application/json" \
               -d "{\"apikey\":\"$PB_KEY\",\"secretapikey\":\"$PB_SECRET\",\"name\":\"$name\",\"type\":\"A\",\"content\":\"$VPS_IP\",\"ttl\":\"300\"}")
-            STATUS=$(echo "$R" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("status","?"))' 2>/dev/null || echo "parse-error")
-            echo "  $name.$DOMAIN → $VPS_IP  ($STATUS)"
+            echo "$name: $(echo $R | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("status","?") + " " + str(d.get("id","")))')"
           }
-          echo "Updating DNS A-records for $DOMAIN → $VPS_IP"
-          for sub in ai hermes n8n ops dashboard openwebui oc oc-staging paperclip; do
-            add_record "$sub"
-          done
-          echo "DNS update complete"
+          echo "Adding DNS A-records..."
+          for sub in n8n openwebui hermes dashboard paperclip scanner; do add_record "$sub"; done
+          echo "DNS update done"
