@@ -31,8 +31,23 @@ jobs:
             n8n-workflows
           echo "Package size: $(du -sh apexcore-deploy.tar.gz | cut -f1)"
 
+      # ── Guard: skip VPS steps if deploy key is not configured ────────
+      - name: Check deploy secret
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::warning::VPS_DEPLOY_KEY secret is not set — skipping VPS deploy steps."
+            echo "  To enable: Settings → Secrets → Actions → New secret: VPS_DEPLOY_KEY"
+            echo "  Generate key on VPS: ssh-keygen -t ed25519 -f /root/.ssh/apexcore_deploy"
+            echo "  Add public key to VPS: cat /root/.ssh/apexcore_deploy.pub >> /root/.ssh/authorized_keys"
+          else
+            echo "VPS_DEPLOY_KEY is configured — proceeding with deploy"
+          fi
+        env:
+          KEY: ${{ secrets.VPS_DEPLOY_KEY }}
+
       # ── Upload package to VPS ─────────────────────────────────────────
       - name: Upload to VPS
+        if: ${{ secrets.VPS_DEPLOY_KEY != '' }}
         uses: appleboy/scp-action@v0.1.7
         with:
           host: 76.13.138.73
@@ -43,6 +58,7 @@ jobs:
 
       # ── Extract and apply on VPS ──────────────────────────────────────
       - name: Apply config on VPS
+        if: ${{ secrets.VPS_DEPLOY_KEY != '' }}
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: 76.13.138.73
@@ -112,7 +128,9 @@ jobs:
 
             # ── Docker Compose stacks (up -d, no recreation unless changed) ─
             # infra-compose: Caddy is profile-gated (profiles: [caddy]) — nginx is the reverse proxy.
+            # n8n_data is marked external: true — must exist before automation-stack starts.
             cd /srv/apexcore
+            docker volume inspect n8n_data &>/dev/null || docker volume create n8n_data
             if docker network inspect ai_net &>/dev/null 2>&1; then
               docker compose -f ai-stack/docker-compose.yml         up -d --remove-orphans 2>&1 | tail -5
               docker compose -f automation-stack/docker-compose.yml up -d --remove-orphans 2>&1 | tail -5
