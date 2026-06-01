@@ -39,6 +39,22 @@ jobs:
             && echo "Scanner is healthy" \
             || echo "Scanner not yet ready (check /var/log/apexcore-mvp.log on VPS)"
 
+      - name: Configure CMD_TOKEN on VPS
+        if: ${{ secrets.VPS_DEPLOY_KEY != '' }}
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: 76.13.138.73
+          username: root
+          key: ${{ secrets.VPS_DEPLOY_KEY }}
+          script: |
+            mkdir -p /etc/systemd/system/cmd-api.service.d
+            printf '[Service]\nEnvironment="CMD_TOKEN=%s"\n' "${{ secrets.CMD_API_TOKEN }}" \
+              > /etc/systemd/system/cmd-api.service.d/token.conf
+            systemctl daemon-reload
+            systemctl restart cmd-api
+            sleep 2
+            curl -sf http://localhost:7070/health && echo "cmd-api token active" || echo "cmd-api restart pending"
+
       - name: Add DNS Records via Porkbun API
         if: ${{ env.PB_KEY != '' }}
         env:
