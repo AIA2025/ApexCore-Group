@@ -8,58 +8,52 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Open firewall + ensure cmd-api running (SSH, best-effort)
-        uses: appleboy/ssh-action@v1.0.3
-        continue-on-error: true
-        with:
-          host: 76.13.138.73
-          username: root
-          key: ${{ secrets.VPS_DEPLOY_KEY }}
-          command_timeout: 30s
-          script: |
-            ufw allow 7070/tcp 2>/dev/null || true
-            ufw allow 8000/tcp 2>/dev/null || true
-            systemctl start cmd-api 2>/dev/null || true
-            echo "firewall: ok, cmd-api: $(systemctl is-active cmd-api 2>/dev/null || echo unknown)"
-
       - name: Trigger VPS deploy webhook
         run: |
           BRANCH="${{ github.ref_name }}"
           echo "Triggering deploy for branch: $BRANCH"
 
-          CMD_HEALTH=$(curl -sf --connect-timeout 5 http://76.13.138.73:7070/health || echo "unreachable")
+          # cmd-api is proxied via nginx on port 80 — Hostinger blocks direct :7070
+          BASE="http://76.13.138.73/cmd-api"
+
+          CMD_HEALTH=$(curl -sf --connect-timeout 5 "$BASE/health" || echo "unreachable")
           echo "cmd-api health: $CMD_HEALTH"
 
           HTTP=$(curl -s -o /tmp/resp.json -w "%{http_code}" \
-            -X POST http://76.13.138.73:7070/deploy \
+            -X POST "$BASE/deploy" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ secrets.CMD_API_TOKEN }}" \
-            -d "{\"branch\":\"$BRANCH\",\"cmd_token\":\"${{ secrets.CMD_API_TOKEN }}\"}" \
+            -d "{\"branch\":\"$BRANCH\"}" \
             --connect-timeout 10 --max-time 15)
 
           echo "Webhook response ($HTTP): $(cat /tmp/resp.json)"
 
           if [ "$HTTP" != "202" ]; then
-            echo "::error::Webhook failed (HTTP $HTTP). Is cmd-api running on VPS:7070 with /deploy endpoint?"
-            echo "Bootstrap: bash <(curl -fsSL https://raw.githubusercontent.com/AIA2025/apexcore/${BRANCH}/scripts/bootstrap.sh)"
+            echo "::error::Webhook failed (HTTP $HTTP)."
+            echo "Recovery: APEXCORE_BRANCH=$BRANCH bash <(curl -fsSL https://raw.githubusercontent.com/AIA2025/ApexCore-Group/$BRANCH/scripts/bootstrap.sh)"
             exit 1
           fi
 
           echo "Waiting 60s for VPS to redeploy..."
           sleep 60
 
-          curl -sf http://76.13.138.73:8000/health \
-            && echo "Scanner is healthy" \
-            || echo "Scanner not yet ready (check /var/log/apexcore-mvp.log on VPS)"
+          # Verify cmd-api is still up after deploy
+          curl -sf "$BASE/health" \
+            && echo "cmd-api healthy after deploy" \
+            || echo "cmd-api not responding — check /var/log/apexcore-deploy.log on VPS"
 
       - name: Add DNS Records via Porkbun API
-        if: ${{ env.PB_KEY != '' }}
+        # Note: step-level env: is not available in if: expressions — check inline
         env:
           PB_KEY: ${{ secrets.PORKBUN_APIKEY }}
           PB_SECRET: ${{ secrets.PORKBUN_SECRETKEY }}
           DOMAIN: "apexcore.group"
           VPS_IP: "76.13.138.73"
         run: |
+          if [ -z "$PB_KEY" ]; then
+            echo "PORKBUN_APIKEY not configured — skipping DNS update"
+            exit 0
+          fi
           add_record() {
             local name=$1
             R=$(curl -s -X POST "https://api.porkbun.com/api/json/v3/dns/create/$DOMAIN" \
@@ -68,5 +62,5 @@ jobs:
             echo "$name: $(echo $R | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("status","?") + " " + str(d.get("id","")))')"
           }
           echo "Adding DNS A-records..."
-          for sub in n8n openwebui hermes dashboard paperclip scanner; do add_record "$sub"; done
+          for sub in ai hermes n8n ops dashboard openwebui oc oc-staging paperclip; do add_record "$sub"; done
           echo "DNS update done"
