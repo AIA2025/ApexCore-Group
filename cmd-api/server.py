@@ -31,14 +31,20 @@ def run_deploy(branch: str, cmd_token: str = ""):
             "/opt/apexcore/cmd-api", "/srv/apexcore/cmd-api",
             "/opt/apexcore/hermes", "/opt/apexcore/paperclip"])
 
-        # --- persist CMD_TOKEN to systemd override (self-bootstrapping) ---
+        # --- persist CMD_TOKEN to systemd override (only if changed) ---
         if cmd_token:
             try:
-                os.makedirs("/etc/systemd/system/cmd-api.service.d", exist_ok=True)
-                with open("/etc/systemd/system/cmd-api.service.d/token.conf", "w") as tf:
-                    tf.write(f'[Service]\nEnvironment="CMD_TOKEN={cmd_token}"\n')
-                log.write("CMD_TOKEN written to systemd override\n")
-                cmd_api_updated = True
+                _token_conf = "/etc/systemd/system/cmd-api.service.d/token.conf"
+                _new_content = f'[Service]\nEnvironment="CMD_TOKEN={cmd_token}"\n'
+                _existing_content = open(_token_conf).read() if os.path.exists(_token_conf) else ""
+                if _existing_content != _new_content:
+                    os.makedirs("/etc/systemd/system/cmd-api.service.d", exist_ok=True)
+                    with open(_token_conf, "w") as tf:
+                        tf.write(_new_content)
+                    log.write("CMD_TOKEN updated in systemd override\n")
+                    cmd_api_updated = True
+                else:
+                    log.write("CMD_TOKEN unchanged — no restart needed\n")
             except Exception as te:
                 log.write(f"CMD_TOKEN write warning: {te}\n")
 
@@ -68,21 +74,15 @@ def run_deploy(branch: str, cmd_token: str = ""):
         else:
             log.write("cmd-api/server.py not in branch — skipping self-update\n")
 
-        # --- scanner (optional — skip if not in branch) ---
         r_main = sh(["curl", "-fsSL", f"{base}/apexcore-mvp/main.py", "-o", "/tmp/scanner-main.py"])
         r_req  = sh(["curl", "-fsSL", f"{base}/apexcore-mvp/requirements.txt", "-o", "/tmp/scanner-req.txt"])
-
         if r_main.returncode == 0 and r_req.returncode == 0:
             sh(["cp", "/tmp/scanner-main.py", "/opt/apexcore-mvp/main.py"])
             sh(["cp", "/tmp/scanner-req.txt", "/opt/apexcore-mvp/requirements.txt"])
-            sh(["pip3", "install", "-r", "/opt/apexcore-mvp/requirements.txt",
-                "--break-system-packages", "-q"])
-
-            r_dash = sh(["curl", "-fsSL", f"{base}/dashboard/index.html",
-                         "-o", "/opt/apexcore-dashboard/index.html"])
+            sh(["pip3", "install", "-r", "/opt/apexcore-mvp/requirements.txt", "--break-system-packages", "-q"])
+            r_dash = sh(["curl", "-fsSL", f"{base}/dashboard/index.html", "-o", "/opt/apexcore-dashboard/index.html"])
             if r_dash.returncode != 0:
                 log.write("dashboard/index.html not in branch, skipping\n")
-
             env_path = "/opt/apexcore-mvp/.env"
             if not os.path.exists(env_path):
                 with open(env_path, "w") as f:
@@ -90,53 +90,30 @@ def run_deploy(branch: str, cmd_token: str = ""):
                 log.write(".env created with placeholders\n")
             else:
                 log.write(".env already exists, not overwriting\n")
-
             cache = os.path.expanduser("~/.cache/ms-playwright")
             if not os.path.isdir(cache) or not os.listdir(cache):
                 sh(["python3", "-m", "playwright", "install", "chromium"])
                 sh(["python3", "-m", "playwright", "install-deps", "chromium"])
-
             subprocess.run(["pkill", "-f", "uvicorn main:app"], capture_output=True)
             time.sleep(2)
-            subprocess.Popen(
-                ["python3", "-m", "uvicorn", "main:app",
-                 "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"],
-                cwd="/opt/apexcore-mvp",
-                stdout=open("/var/log/apexcore-mvp.log", "a"),
-                stderr=subprocess.STDOUT,
-            )
-
+            subprocess.Popen(["python3", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"],
+                             cwd="/opt/apexcore-mvp", stdout=open("/var/log/apexcore-mvp.log", "a"), stderr=subprocess.STDOUT)
             time.sleep(5)
-            result = subprocess.run(["curl", "-sf", "http://localhost:8000/health"],
-                                    capture_output=True, text=True)
+            result = subprocess.run(["curl", "-sf", "http://localhost:8000/health"], capture_output=True, text=True)
             log.write(f"Scanner {'healthy: ' + result.stdout if result.returncode == 0 else 'health check FAILED'}\n")
         else:
             log.write("apexcore-mvp/ not in branch — scanner not updated\n")
 
-        # --- Hermes Dispatcher (optional) ---
         r_hjs = sh(["curl", "-fsSL", f"{base}/hermes/dispatcher.js", "-o", "/tmp/hermes-dispatcher.js"])
-        r_hpk = sh(["curl", "-fsSL", f"{base}/hermes/package.json",  "-o", "/tmp/hermes-package.json"])
+        r_hpk = sh(["curl", "-fsSL", f"{base}/hermes/package.json", "-o", "/tmp/hermes-package.json"])
         r_hsv = sh(["curl", "-fsSL", f"{base}/hermes/hermes.service", "-o", "/tmp/hermes.service"])
         if r_hjs.returncode == 0:
             sh(["cp", "/tmp/hermes-dispatcher.js", "/opt/apexcore/hermes/dispatcher.js"])
             if r_hpk.returncode == 0:
                 sh(["cp", "/tmp/hermes-package.json", "/opt/apexcore/hermes/package.json"])
-                subprocess.run(["npm", "install", "--omit=dev", "--quiet"],
-                               cwd="/opt/apexcore/hermes", stdout=log, stderr=log)
+                subprocess.run(["npm", "install", "--omit=dev", "--quiet"], cwd="/opt/apexcore/hermes", stdout=log, stderr=log)
             if r_hsv.returncode == 0:
                 sh(["cp", "/tmp/hermes.service", "/etc/systemd/system/hermes.service"])
-                # Write DISPATCHER_TOKEN drop-in (idempotent, read from env set by install script)
-                d_token = os.getenv("DISPATCHER_TOKEN", "")
-                try:
-                    os.makedirs("/etc/systemd/system/hermes.service.d", exist_ok=True)
-                    dropin_path = "/etc/systemd/system/hermes.service.d/token.conf"
-                    existing = open(dropin_path).read() if os.path.exists(dropin_path) else ""
-                    if d_token and d_token not in existing:
-                        with open(dropin_path, "w") as tf:
-                            tf.write(f'[Service]\nEnvironment="DISPATCHER_TOKEN={d_token}"\n')
-                        log.write("DISPATCHER_TOKEN drop-in written\n")
-                except Exception as te:
-                    log.write(f"DISPATCHER_TOKEN drop-in warning: {te}\n")
                 sh(["systemctl", "daemon-reload"])
                 sh(["systemctl", "enable", "hermes"])
                 sh(["systemctl", "restart", "hermes"])
@@ -144,7 +121,6 @@ def run_deploy(branch: str, cmd_token: str = ""):
         else:
             log.write("hermes/ not in branch — skipping\n")
 
-        # --- Paperclip seeds (optional) ---
         r_seed = sh(["curl", "-fsSL", f"{base}/paperclip/seed.sh", "-o", "/tmp/paperclip-seed.sh"])
         r_areg = sh(["curl", "-fsSL", f"{base}/paperclip/agent-registration.json", "-o", "/tmp/paperclip-agent-reg.json"])
         if r_seed.returncode == 0:
@@ -158,13 +134,11 @@ def run_deploy(branch: str, cmd_token: str = ""):
 
         log.write("=== Deploy finished ===\n")
         log.flush()
-
     except Exception as e:
         log.write(f"Deploy error: {e}\n")
     finally:
         log.close()
 
-    # Restart via systemd after token write or self-update (log already closed)
     if cmd_api_updated:
         time.sleep(1)
         subprocess.Popen(["systemctl", "restart", "cmd-api"])
@@ -210,7 +184,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    # Kill any competing process on our port before binding
     subprocess.run(["fuser", "-k", f"{PORT}/tcp"], capture_output=True)
     time.sleep(0.5)
     server = HTTPServer(("0.0.0.0", PORT), Handler)
