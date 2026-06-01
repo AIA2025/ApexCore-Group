@@ -1,191 +1,99 @@
 #!/usr/bin/env bash
-# bootstrap.sh — ApexCore V1 full recovery / first-time setup
-#
-# Run from Hostinger VPS console (root):
-#   bash <(curl -fsSL https://raw.githubusercontent.com/AIA2025/ApexCore-Group/main/scripts/bootstrap.sh)
-# Or from the repo:
-#   /srv/apexcore/scripts/bootstrap.sh
-#
-# Safe to re-run: never overwrites existing .env files or API keys.
-
+# ApexCore VPS bootstrap — installs cmd-api with /deploy endpoint + systemd auto-restart
+# Usage: bash <(curl -fsSL "https://raw.githubusercontent.com/AIA2025/apexcore/claude/serene-gates-KHDWp/scripts/bootstrap.sh")
 set -euo pipefail
-APEXCORE_DIR="/srv/apexcore"
-BRANCH="${APEXCORE_BRANCH:-main}"
-LOG="/var/log/apexcore-bootstrap.log"
 
-log()  { echo "[$(date '+%H:%M:%S')] $*" | tee -a "$LOG"; }
-ok()   { echo "  ✅ $*"; }
-warn() { echo "  ⚠️  $*"; }
-fail() { echo "  ❌ $*"; exit 1; }
+BRANCH="${1:-claude/serene-gates-KHDWp}"
+BASE="https://raw.githubusercontent.com/AIA2025/apexcore/${BRANCH}"
+SRV="/opt/apexcore/cmd-api/server.py"
+LOG="/var/log/cmd-api.log"
+SERVICE="/etc/systemd/system/cmd-api.service"
 
-echo ""
 echo "╔══════════════════════════════════════════════╗"
-echo "║  ApexCore V1 Bootstrap / Recovery            ║"
+echo "║  ApexCore CMD-API Bootstrap                  ║"
+echo "║  Branch: ${BRANCH}"
 echo "╚══════════════════════════════════════════════╝"
-echo "Branch: $BRANCH  |  $(date '+%Y-%m-%d %H:%M:%S')"
 echo ""
 
-# ── 1. Disk space guard ───────────────────────────────────────────────────────
-log "Checking disk space..."
-DISK_PCT=$(df / | awk 'NR==2{print $5}' | tr -d '%')
-if [ "$DISK_PCT" -gt 90 ]; then
-  warn "Disk at ${DISK_PCT}% — running cleanup first"
-  docker system prune -f --volumes=false 2>/dev/null || true
-  journalctl --vacuum-size=200M 2>/dev/null || true
-  find /var/log -name "*.log" -size +100M -exec truncate -s 50M {} \; 2>/dev/null || true
-  DISK_PCT=$(df / | awk 'NR==2{print $5}' | tr -d '%')
-  log "Disk after cleanup: ${DISK_PCT}%"
-fi
-[ "$DISK_PCT" -lt 98 ] && ok "Disk: ${DISK_PCT}%" || warn "Disk still at ${DISK_PCT}% — monitor closely"
+# ── 1. Download ──────────────────────────────────────
+echo "[1/5] Downloading cmd-api/server.py from GitHub..."
+curl -fsSL "${BASE}/cmd-api/server.py" -o /tmp/cmd-api-server.py
+grep -q 'run_deploy' /tmp/cmd-api-server.py \
+  || { echo "ERROR: downloaded file has no run_deploy — branch not pushed yet?"; exit 1; }
+mkdir -p /opt/apexcore/cmd-api /srv/apexcore/cmd-api
+cp /tmp/cmd-api-server.py "$SRV"
+cp /tmp/cmd-api-server.py /srv/apexcore/cmd-api/server.py
+echo "      ✓"
 
-# ── 2. Git pull ───────────────────────────────────────────────────────────────
-log "Pulling latest code..."
-if [ -d "$APEXCORE_DIR/.git" ]; then
-  git -C "$APEXCORE_DIR" stash push -m "bootstrap-$(date +%s)" 2>/dev/null || true
-  git -C "$APEXCORE_DIR" fetch origin
-  git -C "$APEXCORE_DIR" checkout "$BRANCH"
-  git -C "$APEXCORE_DIR" pull origin "$BRANCH"
-  ok "Code updated to $(git -C "$APEXCORE_DIR" rev-parse --short HEAD)"
-else
-  log "Cloning repo..."
-  git clone https://github.com/AIA2025/ApexCore-Group.git "$APEXCORE_DIR"
-  git -C "$APEXCORE_DIR" checkout "$BRANCH"
-  ok "Repo cloned"
-fi
-chmod +x "$APEXCORE_DIR"/scripts/*.sh 2>/dev/null || true
+# ── 2. Systemd service ───────────────────────────────
+echo "[2/5] Installing systemd service..."
+cat > "$SERVICE" <<'UNIT'
+[Unit]
+Description=ApexCore CMD API
+After=network.target
 
-# ── 3. Docker ─────────────────────────────────────────────────────────────────
-log "Checking Docker..."
-if ! systemctl is-active --quiet docker 2>/dev/null; then
-  systemctl start docker
-  sleep 3
-fi
-docker info &>/dev/null && ok "Docker running" || fail "Docker not running"
+[Service]
+ExecStartPre=/bin/bash -c 'fuser -k 7070/tcp 2>/dev/null || true; sleep 1'
+ExecStart=/usr/bin/python3 /opt/apexcore/cmd-api/server.py
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/cmd-api.log
+StandardError=append:/var/log/cmd-api.log
+WorkingDirectory=/opt/apexcore/cmd-api
+Environment=CMD_TOKEN=
 
-# ── 4. Networks & volumes ─────────────────────────────────────────────────────
-log "Ensuring networks and volumes..."
-for net in ai_net automation_net infra_net; do
-  docker network inspect "$net" &>/dev/null \
-    || docker network create "$net" \
-    && ok "network: $net"
-done
-docker volume inspect n8n_data &>/dev/null \
-  || docker volume create n8n_data \
-  && ok "volume: n8n_data"
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable cmd-api --quiet
+echo "      ✓"
 
-# ── 5. .env placeholder guard (never overwrites existing keys) ────────────────
-log "Checking .env files..."
-create_env_if_missing() {
-  local path=$1 content=$2
-  if [ ! -f "$path" ]; then
-    mkdir -p "$(dirname "$path")"
-    echo "$content" > "$path"
-    warn "Created placeholder: $path — fill in real values"
-  else
-    ok "Exists (not touched): $path"
-  fi
-}
-create_env_if_missing "$APEXCORE_DIR/ai-stack/.env" \
-"OPENROUTER_API_KEY=REPLACE_ME
-LITELLM_MASTER_KEY=REPLACE_ME"
-
-create_env_if_missing "$APEXCORE_DIR/automation-stack/.env" \
-"N8N_BASIC_AUTH_PASSWORD=REPLACE_ME
-N8N_ENCRYPTION_KEY=REPLACE_ME
-LITELLM_MASTER_KEY=REPLACE_ME
-DISPATCHER_TOKEN=REPLACE_ME"
-
-create_env_if_missing "$APEXCORE_DIR/cmd-api/.env.dispatcher" \
-"DISPATCHER_TOKEN=REPLACE_ME
-LITELLM_MASTER_KEY=REPLACE_ME
-CMD_TOKEN=REPLACE_ME"
-
-# ── 6. nginx vhost ────────────────────────────────────────────────────────────
-log "Configuring nginx..."
-VHOST_SRC="$APEXCORE_DIR/infra-compose/nginx-vhost.conf"
-VHOST_DST="/etc/nginx/sites-available/apexcore.conf"
-VHOST_LINK="/etc/nginx/sites-enabled/apexcore.conf"
-if [ -f "$VHOST_SRC" ] && command -v nginx &>/dev/null; then
-  cp "$VHOST_SRC" "$VHOST_DST"
-  mkdir -p /etc/nginx/sites-enabled
-  [ -L "$VHOST_LINK" ] || ln -sf "$VHOST_DST" "$VHOST_LINK"
-  if nginx -t 2>&1 | grep -q "test is successful"; then
-    nginx -s reload && ok "nginx: vhost loaded + reloaded"
-  else
-    warn "nginx -t failed — vhost not applied (check /etc/nginx/sites-available/apexcore.conf)"
-  fi
-fi
-
-# ── 7. Static assets ──────────────────────────────────────────────────────────
-mkdir -p /opt/apexcore-dashboard
-[ -f "$APEXCORE_DIR/dashboard/index.html" ] \
-  && cp "$APEXCORE_DIR/dashboard/index.html" /opt/apexcore-dashboard/index.html \
-  && ok "Dashboard synced"
-
-# ── 8. Docker Compose stacks ──────────────────────────────────────────────────
-log "Starting compose stacks..."
-for cf in \
-  "ai-stack/docker-compose.yml" \
-  "automation-stack/docker-compose.yml" \
-  "infra-compose/docker-compose.yml"; do
-  FULL="$APEXCORE_DIR/$cf"
-  if [ -f "$FULL" ]; then
-    docker compose -f "$FULL" up -d --remove-orphans 2>&1 \
-      | tail -3 | sed 's/^/    /'
-    ok "compose: $cf"
-  else
-    warn "Not found: $cf"
-  fi
-done
-
-# ── 9. cmd-api ────────────────────────────────────────────────────────────────
-log "Starting cmd-api..."
-pkill -f "python3.*server.py" 2>/dev/null || true
-sleep 1
-
-# Load CMD_TOKEN from .env.dispatcher if not already set
-if [ -z "${CMD_TOKEN:-}" ] && [ -f "$APEXCORE_DIR/cmd-api/.env.dispatcher" ]; then
-  CMD_TOKEN=$(grep '^CMD_TOKEN=' "$APEXCORE_DIR/cmd-api/.env.dispatcher" | cut -d= -f2 | tr -d '"')
-fi
-
-if [ -z "${CMD_TOKEN:-}" ]; then
-  warn "CMD_TOKEN not set — cmd-api will run WITHOUT auth (fix: set CMD_TOKEN in cmd-api/.env.dispatcher)"
-fi
-
-CMD_TOKEN="${CMD_TOKEN:-}" \
-  nohup python3 "$APEXCORE_DIR/cmd-api/server.py" \
-  >> /var/log/cmd-api.log 2>&1 &
+# ── 3. (Re)start ─────────────────────────────────────
+echo "[3/5] Stopping any running cmd-api processes..."
+systemctl stop cmd-api 2>/dev/null || true
+fuser -k 7070/tcp 2>/dev/null || true
+pkill -f "cmd-api/server.py" 2>/dev/null || true
 sleep 2
+echo "      Starting service..."
+systemctl start cmd-api
+sleep 3
+echo "      ✓"
 
-if curl -sf http://localhost:7070/health &>/dev/null; then
-  ok "cmd-api: running on :7070"
-else
-  warn "cmd-api: not responding — check /var/log/cmd-api.log"
-fi
+# ── 4. Health check ──────────────────────────────────
+echo "[4/5] Health check (port 7070)..."
+HEALTH=$(curl -sf http://localhost:7070/health || echo "FAILED")
+echo "      ${HEALTH}"
+echo "$HEALTH" | grep -q '"ok"' || { echo "ERROR: health check failed"; journalctl -u cmd-api -n 20 --no-pager; exit 1; }
 
-# ── 10. Dispatcher ────────────────────────────────────────────────────────────
-log "Starting dispatcher..."
-pkill -f "hermes_dispatcher.py" 2>/dev/null || true
-sleep 1
-ENV_FILE="$APEXCORE_DIR/cmd-api/.env.dispatcher"
-if [ -f "$ENV_FILE" ] && [ -f "$APEXCORE_DIR/cmd-api/hermes_dispatcher.py" ]; then
-  set -a; source "$ENV_FILE"; set +a
-  nohup python3 "$APEXCORE_DIR/cmd-api/hermes_dispatcher.py" \
-    >> /var/log/apexcore-dispatcher.log 2>&1 &
-  sleep 2
-  if curl -sf http://localhost:7071/health &>/dev/null; then
-    ok "dispatcher: running on :7071"
-  else
-    warn "dispatcher: not responding — check /var/log/apexcore-dispatcher.log"
-  fi
-else
-  warn "dispatcher: hermes_dispatcher.py or .env.dispatcher not found — skipping"
-fi
+# ── 5. /deploy smoke test ────────────────────────────
+echo "[5/5] Testing /deploy endpoint..."
+RESP=$(curl -s -X POST http://localhost:7070/deploy \
+  -H "Content-Type: application/json" \
+  -d "{\"branch\":\"${BRANCH}\"}")
+echo "      ${RESP}"
 
-# ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
-echo "═══════════════════════════════════════════════════"
-echo "  Bootstrap complete — $(date '+%H:%M:%S')"
-echo "  Run smoke test: $APEXCORE_DIR/scripts/smoke-test.sh"
-echo "═══════════════════════════════════════════════════"
-echo ""
+if echo "$RESP" | grep -q '"deploying"'; then
+  echo "══════════════════════════════════════════════"
+  echo "  Bootstrap complete."
+  echo "  cmd-api is running, /deploy works, self-update active."
+  echo "  systemd will auto-restart it on reboot."
+  echo ""
+  echo "  Live logs:  journalctl -u cmd-api -f"
+  echo "  Deploy log: tail -f /var/log/cmd-api-deploy.log"
+  echo "══════════════════════════════════════════════"
+elif echo "$RESP" | grep -q '"unauthorized"'; then
+  echo "══════════════════════════════════════════════"
+  echo "  Bootstrap complete."
+  echo "  cmd-api is running, token auth is enforced (CMD_TOKEN set)."
+  echo "  CI will authenticate via CMD_API_TOKEN secret."
+  echo ""
+  echo "  Live logs:  journalctl -u cmd-api -f"
+  echo "  Deploy log: tail -f /var/log/cmd-api-deploy.log"
+  echo "══════════════════════════════════════════════"
+else
+  echo "ERROR: /deploy returned unexpected response"
+  echo "Check: journalctl -u cmd-api -n 50 --no-pager"
+  exit 1
+fi
