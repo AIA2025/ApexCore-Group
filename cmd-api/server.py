@@ -31,14 +31,20 @@ def run_deploy(branch: str, cmd_token: str = ""):
             "/opt/apexcore/cmd-api", "/srv/apexcore/cmd-api",
             "/opt/apexcore/hermes", "/opt/apexcore/paperclip"])
 
-        # --- persist CMD_TOKEN to systemd override (self-bootstrapping) ---
+        # --- persist CMD_TOKEN to systemd override (only if changed) ---
         if cmd_token:
             try:
-                os.makedirs("/etc/systemd/system/cmd-api.service.d", exist_ok=True)
-                with open("/etc/systemd/system/cmd-api.service.d/token.conf", "w") as tf:
-                    tf.write(f'[Service]\nEnvironment="CMD_TOKEN={cmd_token}"\n')
-                log.write("CMD_TOKEN written to systemd override\n")
-                cmd_api_updated = True
+                _token_conf = "/etc/systemd/system/cmd-api.service.d/token.conf"
+                _new_content = f'[Service]\nEnvironment="CMD_TOKEN={cmd_token}"\n'
+                _existing_content = open(_token_conf).read() if os.path.exists(_token_conf) else ""
+                if _existing_content != _new_content:
+                    os.makedirs("/etc/systemd/system/cmd-api.service.d", exist_ok=True)
+                    with open(_token_conf, "w") as tf:
+                        tf.write(_new_content)
+                    log.write("CMD_TOKEN updated in systemd override\n")
+                    cmd_api_updated = True
+                else:
+                    log.write("CMD_TOKEN unchanged — no restart needed\n")
             except Exception as te:
                 log.write(f"CMD_TOKEN write warning: {te}\n")
 
@@ -77,12 +83,10 @@ def run_deploy(branch: str, cmd_token: str = ""):
             sh(["cp", "/tmp/scanner-req.txt", "/opt/apexcore-mvp/requirements.txt"])
             sh(["pip3", "install", "-r", "/opt/apexcore-mvp/requirements.txt",
                 "--break-system-packages", "-q"])
-
             r_dash = sh(["curl", "-fsSL", f"{base}/dashboard/index.html",
                          "-o", "/opt/apexcore-dashboard/index.html"])
             if r_dash.returncode != 0:
                 log.write("dashboard/index.html not in branch, skipping\n")
-
             env_path = "/opt/apexcore-mvp/.env"
             if not os.path.exists(env_path):
                 with open(env_path, "w") as f:
@@ -90,12 +94,10 @@ def run_deploy(branch: str, cmd_token: str = ""):
                 log.write(".env created with placeholders\n")
             else:
                 log.write(".env already exists, not overwriting\n")
-
             cache = os.path.expanduser("~/.cache/ms-playwright")
             if not os.path.isdir(cache) or not os.listdir(cache):
                 sh(["python3", "-m", "playwright", "install", "chromium"])
                 sh(["python3", "-m", "playwright", "install-deps", "chromium"])
-
             subprocess.run(["pkill", "-f", "uvicorn main:app"], capture_output=True)
             time.sleep(2)
             subprocess.Popen(
@@ -105,7 +107,6 @@ def run_deploy(branch: str, cmd_token: str = ""):
                 stdout=open("/var/log/apexcore-mvp.log", "a"),
                 stderr=subprocess.STDOUT,
             )
-
             time.sleep(5)
             result = subprocess.run(["curl", "-sf", "http://localhost:8000/health"],
                                     capture_output=True, text=True)
