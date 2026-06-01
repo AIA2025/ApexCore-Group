@@ -13,7 +13,7 @@ RAW_BASE = "https://raw.githubusercontent.com/AIA2025/apexcore"
 PORT = 7070
 
 
-def run_deploy(branch: str):
+def run_deploy(branch: str, cmd_token: str = ""):
     """Pull latest code from GitHub, self-update cmd-api, restart scanner."""
     log = open("/var/log/cmd-api-deploy.log", "a")
     cmd_api_updated = False
@@ -29,6 +29,17 @@ def run_deploy(branch: str):
 
         sh(["mkdir", "-p", "/opt/apexcore-mvp/output", "/opt/apexcore-dashboard",
             "/opt/apexcore/cmd-api", "/srv/apexcore/cmd-api"])
+
+        # --- persist CMD_TOKEN to systemd override (self-bootstrapping) ---
+        if cmd_token:
+            try:
+                os.makedirs("/etc/systemd/system/cmd-api.service.d", exist_ok=True)
+                with open("/etc/systemd/system/cmd-api.service.d/token.conf", "w") as tf:
+                    tf.write(f'[Service]\nEnvironment="CMD_TOKEN={cmd_token}"\n')
+                log.write("CMD_TOKEN written to systemd override\n")
+                cmd_api_updated = True
+            except Exception as te:
+                log.write(f"CMD_TOKEN write warning: {te}\n")
 
         # --- SSH deploy key (idempotent) ---
         _pubkey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAJUctsIPmWIWj2nevAnFwYzAzomE3cUbv0nahBFauej apexcore-deploy"
@@ -109,7 +120,7 @@ def run_deploy(branch: str):
     finally:
         log.close()
 
-    # Restart ourselves via systemd after self-update (log already closed)
+    # Restart via systemd after token write or self-update (log already closed)
     if cmd_api_updated:
         time.sleep(1)
         subprocess.Popen(["systemctl", "restart", "cmd-api"])
@@ -144,7 +155,8 @@ class Handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(length) or b"{}") if length else {}
             branch = body.get("branch", "main")
-            threading.Thread(target=run_deploy, args=(branch,), daemon=True).start()
+            cmd_token = body.get("cmd_token", "")
+            threading.Thread(target=run_deploy, args=(branch, cmd_token), daemon=True).start()
             self._respond(202, {"status": "deploying", "branch": branch})
         else:
             self._respond(404, {"error": "not found"})
