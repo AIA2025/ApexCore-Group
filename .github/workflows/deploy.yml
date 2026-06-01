@@ -19,28 +19,38 @@ jobs:
           script: |
             set -e
 
-            # Caddyfile update
+            # Caddyfile update (sourced from apexcore main repo; skip if not present on this branch)
             cp /opt/openclaw/reverse-proxy/Caddyfile /opt/openclaw/reverse-proxy/Caddyfile.bak.$(date +%Y%m%d_%H%M%S) 2>/dev/null || true
-            curl -fsSL "https://raw.githubusercontent.com/AIA2025/apexcore/$GITHUB_REF_NAME/Caddyfile" \
-              > /opt/openclaw/reverse-proxy/Caddyfile
-            docker exec caddy caddy validate --config /etc/caddy/Caddyfile 2>&1 | tail -2
-            docker exec caddy caddy reload --config /etc/caddy/Caddyfile
-            echo "✅ Caddy reloaded"
+            if curl -fsSL "https://raw.githubusercontent.com/AIA2025/apexcore/$GITHUB_REF_NAME/Caddyfile" \
+                 -o /tmp/Caddyfile.new 2>/dev/null; then
+              mv /tmp/Caddyfile.new /opt/openclaw/reverse-proxy/Caddyfile
+              docker exec caddy caddy validate --config /etc/caddy/Caddyfile 2>&1 | tail -2
+              docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+              echo "✅ Caddy reloaded"
+            else
+              echo "⏭️  Caddyfile not on this branch — skipping"
+            fi
 
             # Dashboard update
             mkdir -p /opt/apexcore-dashboard
-            curl -fsSL "https://raw.githubusercontent.com/AIA2025/apexcore/$GITHUB_REF_NAME/dashboard/index.html" \
-              > /opt/apexcore-dashboard/index.html
-            echo "✅ Dashboard updated"
+            if curl -fsSL "https://raw.githubusercontent.com/AIA2025/apexcore/$GITHUB_REF_NAME/dashboard/index.html" \
+                 -o /opt/apexcore-dashboard/index.html 2>/dev/null; then
+              echo "✅ Dashboard updated"
+            else
+              echo "⏭️  dashboard/index.html not on this branch — skipping"
+            fi
 
             # cmd-api: deploy and ensure running
             mkdir -p /opt/apexcore/cmd-api
-            curl -fsSL "https://raw.githubusercontent.com/AIA2025/apexcore/$GITHUB_REF_NAME/cmd-api/server.py" \
-              > /opt/apexcore/cmd-api/server.py
-            pkill -f "cmd-api/server.py" 2>/dev/null || true
-            sleep 1
-            CMD_TOKEN="${{ secrets.CMD_API_TOKEN }}" nohup python3 /opt/apexcore/cmd-api/server.py > /var/log/cmd-api.log 2>&1 &
-            echo "✅ cmd-api started on port 7070"
+            if curl -fsSL "https://raw.githubusercontent.com/AIA2025/apexcore/$GITHUB_REF_NAME/cmd-api/server.py" \
+                 -o /opt/apexcore/cmd-api/server.py 2>/dev/null; then
+              pkill -f "cmd-api/server.py" 2>/dev/null || true
+              sleep 1
+              CMD_TOKEN="${{ secrets.CMD_API_TOKEN }}" nohup python3 /opt/apexcore/cmd-api/server.py > /var/log/cmd-api.log 2>&1 &
+              echo "✅ cmd-api started on port 7070"
+            else
+              echo "⏭️  cmd-api/server.py not on this branch — skipping"
+            fi
 
             # Hermes Dispatcher: deploy and restart
             mkdir -p /opt/apexcore/hermes
