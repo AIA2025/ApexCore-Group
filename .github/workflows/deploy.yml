@@ -8,78 +8,61 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Open firewall + bootstrap cmd-api (SSH, best-effort)
+      - name: Deploy via SSH (bootstrap + trigger via localhost)
         uses: appleboy/ssh-action@v1.0.3
-        continue-on-error: true
         with:
           host: 76.13.138.73
           username: root
           key: ${{ secrets.VPS_DEPLOY_KEY }}
-          command_timeout: 90s
+          command_timeout: 180s
           script: |
-            ufw allow 7070/tcp 2>/dev/null || true
-            ufw allow 8000/tcp 2>/dev/null || true
+            BRANCH="${{ github.ref_name }}"
+            TOKEN="${{ secrets.CMD_API_TOKEN }}"
+            echo "=== Deploy branch=$BRANCH ==="
 
+            # Bootstrap cmd-api if not installed/running
             if ! systemctl is-active --quiet cmd-api 2>/dev/null; then
-              echo "cmd-api not running — bootstrapping..."
+              echo "Bootstrapping cmd-api..."
               mkdir -p /opt/apexcore/cmd-api /etc/systemd/system/cmd-api.service.d
 
               curl -fsSL \
                 -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
                 -H "Accept: application/vnd.github.v3.raw" \
-                "https://api.github.com/repos/AIA2025/ApexCore-Group/contents/cmd-api/server.py?ref=${{ github.ref_name }}" \
+                "https://api.github.com/repos/AIA2025/ApexCore-Group/contents/cmd-api/server.py?ref=${BRANCH}" \
                 -o /opt/apexcore/cmd-api/server.py \
-              || { echo "GitHub API download failed — skipping bootstrap"; exit 0; }
+              || { echo "Download failed"; exit 1; }
 
               printf '[Unit]\nDescription=ApexCore CMD API\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/bin/python3 /opt/apexcore/cmd-api/server.py\nRestart=always\nRestartSec=3\n\n[Install]\nWantedBy=multi-user.target\n' \
                 > /etc/systemd/system/cmd-api.service
 
-              printf '[Service]\nEnvironment="CMD_TOKEN=${{ secrets.CMD_API_TOKEN }}"\n' \
+              printf '[Service]\nEnvironment="CMD_TOKEN=%s"\n' "$TOKEN" \
                 > /etc/systemd/system/cmd-api.service.d/token.conf
 
               systemctl daemon-reload
               systemctl enable cmd-api
               systemctl start cmd-api
-
-              for i in 1 2 3 4 5; do
-                sleep 2
-                curl -sf http://localhost:7070/health && echo "cmd-api up after ${i}x2s" && break || true
-              done
-            else
-              echo "cmd-api already active"
+              sleep 5
             fi
 
-            echo "status: $(systemctl is-active cmd-api 2>/dev/null || echo unknown)"
-
-      - name: Trigger VPS deploy webhook
-        run: |
-          BRANCH="${{ github.ref_name }}"
-          echo "Branch: $BRANCH"
-
-          # Retry up to 6x (12s gap) in case cmd-api just bootstrapped
-          HTTP="000"
-          for attempt in 1 2 3 4 5 6; do
-            HTTP=$(curl -s -o /tmp/resp.json -w "%{http_code}" \
-              -X POST http://76.13.138.73:7070/deploy \
+            # Trigger deploy via localhost (no external port needed)
+            HTTP=$(curl -s -o /tmp/deploy-resp.json -w "%{http_code}" \
+              -X POST http://localhost:7070/deploy \
               -H "Content-Type: application/json" \
-              -H "Authorization: Bearer ${{ secrets.CMD_API_TOKEN }}" \
-              -d "{\"branch\":\"$BRANCH\",\"cmd_token\":\"${{ secrets.CMD_API_TOKEN }}\"}" \
-              --connect-timeout 8 --max-time 12 || echo "000")
-            echo "Attempt $attempt: HTTP $HTTP — $(cat /tmp/resp.json 2>/dev/null)"
-            [ "$HTTP" = "202" ] && break
-            sleep 12
-          done
+              -H "Authorization: Bearer $TOKEN" \
+              -d "{\"branch\":\"$BRANCH\",\"cmd_token\":\"$TOKEN\"}" \
+              --max-time 10)
 
-          if [ "$HTTP" != "202" ]; then
-            echo "::error::Webhook failed after 6 attempts (last HTTP $HTTP). cmd-api not reachable on VPS:7070."
-            exit 1
-          fi
+            echo "Deploy response: HTTP $HTTP — $(cat /tmp/deploy-resp.json)"
 
-          echo "Deploy triggered — waiting 60s for VPS to redeploy..."
-          sleep 60
-          curl -sf http://76.13.138.73:8000/health \
-            && echo "Scanner healthy" \
-            || echo "Scanner not yet ready"
+            if [ "$HTTP" != "202" ]; then
+              echo "cmd-api status: $(systemctl is-active cmd-api)"
+              journalctl -u cmd-api --no-pager -n 20 || true
+              exit 1
+            fi
+
+            echo "Deploy accepted. Waiting 60s for VPS tasks to complete..."
+            sleep 60
+            curl -sf http://localhost:8000/health && echo "Scanner healthy" || echo "Scanner not yet ready"
 
       - name: Add DNS Records via Porkbun API
         if: ${{ env.PB_KEY != '' }}
