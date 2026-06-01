@@ -83,8 +83,17 @@ if echo "$RESP" | grep -q '"deploying"'; then
   echo "  Live logs:  journalctl -u cmd-api -f"
   echo "  Deploy log: tail -f /var/log/cmd-api-deploy.log"
   echo "══════════════════════════════════════════════"
+elif echo "$RESP" | grep -q '"unauthorized"'; then
+  echo "══════════════════════════════════════════════"
+  echo "  Bootstrap complete."
+  echo "  cmd-api is running, token auth is enforced (CMD_TOKEN set)."
+  echo "  CI will authenticate via CMD_API_TOKEN secret."
+  echo ""
+  echo "  Live logs:  journalctl -u cmd-api -f"
+  echo "  Deploy log: tail -f /var/log/cmd-api-deploy.log"
+  echo "══════════════════════════════════════════════"
 else
-  echo "WARNING: /deploy returned unexpected response"
+  echo "ERROR: /deploy returned unexpected response"
   echo "Check: journalctl -u cmd-api -n 50 --no-pager"
   exit 1
 fi
