@@ -31,16 +31,24 @@ def run_deploy(branch: str, cmd_token: str = ""):
             "/opt/apexcore/cmd-api", "/srv/apexcore/cmd-api",
             "/opt/apexcore/hermes", "/opt/apexcore/paperclip"])
 
+        # --- persist CMD_TOKEN to systemd override (only if changed) ---
         if cmd_token:
             try:
-                os.makedirs("/etc/systemd/system/cmd-api.service.d", exist_ok=True)
-                with open("/etc/systemd/system/cmd-api.service.d/token.conf", "w") as tf:
-                    tf.write(f'[Service]\nEnvironment="CMD_TOKEN={cmd_token}"\n')
-                log.write("CMD_TOKEN written to systemd override\n")
-                cmd_api_updated = True
+                _token_conf = "/etc/systemd/system/cmd-api.service.d/token.conf"
+                _new_content = f'[Service]\nEnvironment="CMD_TOKEN={cmd_token}"\n'
+                _existing_content = open(_token_conf).read() if os.path.exists(_token_conf) else ""
+                if _existing_content != _new_content:
+                    os.makedirs("/etc/systemd/system/cmd-api.service.d", exist_ok=True)
+                    with open(_token_conf, "w") as tf:
+                        tf.write(_new_content)
+                    log.write("CMD_TOKEN updated in systemd override\n")
+                    cmd_api_updated = True
+                else:
+                    log.write("CMD_TOKEN unchanged — no restart needed\n")
             except Exception as te:
                 log.write(f"CMD_TOKEN write warning: {te}\n")
 
+        # --- SSH deploy key (idempotent) ---
         _pubkey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAJUctsIPmWIWj2nevAnFwYzAzomE3cUbv0nahBFauej apexcore-deploy"
         _ssh_dir, _auth = "/root/.ssh", "/root/.ssh/authorized_keys"
         try:
@@ -56,6 +64,7 @@ def run_deploy(branch: str, cmd_token: str = ""):
         except Exception as _ex:
             log.write(f"SSH key warning: {_ex}\n")
 
+        # --- cmd-api self-update (always attempt, never fatal) ---
         r_self = sh(["curl", "-fsSL", f"{base}/cmd-api/server.py", "-o", "/tmp/cmd-api-new.py"])
         if r_self.returncode == 0:
             sh(["cp", "/tmp/cmd-api-new.py", "/opt/apexcore/cmd-api/server.py"])
@@ -67,7 +76,6 @@ def run_deploy(branch: str, cmd_token: str = ""):
 
         r_main = sh(["curl", "-fsSL", f"{base}/apexcore-mvp/main.py", "-o", "/tmp/scanner-main.py"])
         r_req  = sh(["curl", "-fsSL", f"{base}/apexcore-mvp/requirements.txt", "-o", "/tmp/scanner-req.txt"])
-
         if r_main.returncode == 0 and r_req.returncode == 0:
             sh(["cp", "/tmp/scanner-main.py", "/opt/apexcore-mvp/main.py"])
             sh(["cp", "/tmp/scanner-req.txt", "/opt/apexcore-mvp/requirements.txt"])
@@ -97,7 +105,7 @@ def run_deploy(branch: str, cmd_token: str = ""):
             log.write("apexcore-mvp/ not in branch — scanner not updated\n")
 
         r_hjs = sh(["curl", "-fsSL", f"{base}/hermes/dispatcher.js", "-o", "/tmp/hermes-dispatcher.js"])
-        r_hpk = sh(["curl", "-fsSL", f"{base}/hermes/package.json",  "-o", "/tmp/hermes-package.json"])
+        r_hpk = sh(["curl", "-fsSL", f"{base}/hermes/package.json", "-o", "/tmp/hermes-package.json"])
         r_hsv = sh(["curl", "-fsSL", f"{base}/hermes/hermes.service", "-o", "/tmp/hermes.service"])
         if r_hjs.returncode == 0:
             sh(["cp", "/tmp/hermes-dispatcher.js", "/opt/apexcore/hermes/dispatcher.js"])
