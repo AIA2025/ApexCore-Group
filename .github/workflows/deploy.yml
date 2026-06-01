@@ -8,6 +8,40 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Bootstrap cmd-api via SSH (only if port 7070 unreachable)
+        uses: appleboy/ssh-action@v1.0.3
+        continue-on-error: true
+        with:
+          host: 76.13.138.73
+          username: root
+          key: ${{ secrets.VPS_DEPLOY_KEY }}
+          command_timeout: 60s
+          script: |
+            if curl -sf --connect-timeout 3 http://localhost:7070/health >/dev/null 2>&1; then
+              echo "cmd-api already running — skip bootstrap"
+              exit 0
+            fi
+            echo "cmd-api unreachable — bootstrapping..."
+            mkdir -p /opt/apexcore/cmd-api /etc/systemd/system/cmd-api.service.d
+
+            curl -fsSL \
+              -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github.v3.raw" \
+              "https://api.github.com/repos/AIA2025/ApexCore-Group/contents/cmd-api/server.py?ref=${{ github.ref_name }}" \
+              -o /opt/apexcore/cmd-api/server.py
+
+            printf '[Unit]\nDescription=ApexCore CMD API\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/bin/python3 /opt/apexcore/cmd-api/server.py\nRestart=always\nRestartSec=3\n\n[Install]\nWantedBy=multi-user.target\n' \
+              > /etc/systemd/system/cmd-api.service
+
+            printf '[Service]\nEnvironment="CMD_TOKEN=${{ secrets.CMD_API_TOKEN }}"\n' \
+              > /etc/systemd/system/cmd-api.service.d/token.conf
+
+            systemctl daemon-reload
+            systemctl enable cmd-api
+            systemctl restart cmd-api
+            sleep 3
+            curl -sf http://localhost:7070/health && echo "Bootstrap OK" || echo "Bootstrap FAILED — check /var/log/cmd-api.log"
+
       - name: Trigger VPS deploy webhook
         run: |
           BRANCH="${{ github.ref_name }}"
