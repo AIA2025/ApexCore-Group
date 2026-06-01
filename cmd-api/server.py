@@ -28,7 +28,8 @@ def run_deploy(branch: str, cmd_token: str = ""):
         base = f"{RAW_BASE}/{branch}"
 
         sh(["mkdir", "-p", "/opt/apexcore-mvp/output", "/opt/apexcore-dashboard",
-            "/opt/apexcore/cmd-api", "/srv/apexcore/cmd-api"])
+            "/opt/apexcore/cmd-api", "/srv/apexcore/cmd-api",
+            "/opt/apexcore/hermes", "/opt/apexcore/paperclip"])
 
         # --- persist CMD_TOKEN to systemd override (self-bootstrapping) ---
         if cmd_token:
@@ -112,6 +113,37 @@ def run_deploy(branch: str, cmd_token: str = ""):
         else:
             log.write("apexcore-mvp/ not in branch — scanner not updated\n")
 
+        # --- Hermes Dispatcher (optional) ---
+        r_hjs = sh(["curl", "-fsSL", f"{base}/hermes/dispatcher.js", "-o", "/tmp/hermes-dispatcher.js"])
+        r_hpk = sh(["curl", "-fsSL", f"{base}/hermes/package.json",  "-o", "/tmp/hermes-package.json"])
+        r_hsv = sh(["curl", "-fsSL", f"{base}/hermes/hermes.service", "-o", "/tmp/hermes.service"])
+        if r_hjs.returncode == 0:
+            sh(["cp", "/tmp/hermes-dispatcher.js", "/opt/apexcore/hermes/dispatcher.js"])
+            if r_hpk.returncode == 0:
+                sh(["cp", "/tmp/hermes-package.json", "/opt/apexcore/hermes/package.json"])
+                subprocess.run(["npm", "install", "--omit=dev", "--quiet"],
+                               cwd="/opt/apexcore/hermes", stdout=log, stderr=log)
+            if r_hsv.returncode == 0:
+                sh(["cp", "/tmp/hermes.service", "/etc/systemd/system/hermes.service"])
+                sh(["systemctl", "daemon-reload"])
+                sh(["systemctl", "enable", "hermes"])
+                sh(["systemctl", "restart", "hermes"])
+            log.write("Hermes Dispatcher deployed\n")
+        else:
+            log.write("hermes/ not in branch — skipping\n")
+
+        # --- Paperclip seeds (optional) ---
+        r_seed = sh(["curl", "-fsSL", f"{base}/paperclip/seed.sh", "-o", "/tmp/paperclip-seed.sh"])
+        r_areg = sh(["curl", "-fsSL", f"{base}/paperclip/agent-registration.json", "-o", "/tmp/paperclip-agent-reg.json"])
+        if r_seed.returncode == 0:
+            sh(["cp", "/tmp/paperclip-seed.sh", "/opt/apexcore/paperclip/seed.sh"])
+            sh(["chmod", "+x", "/opt/apexcore/paperclip/seed.sh"])
+            if r_areg.returncode == 0:
+                sh(["cp", "/tmp/paperclip-agent-reg.json", "/opt/apexcore/paperclip/agent-registration.json"])
+            log.write("Paperclip seeds updated\n")
+        else:
+            log.write("paperclip/ not in branch — skipping\n")
+
         log.write("=== Deploy finished ===\n")
         log.flush()
 
@@ -120,7 +152,6 @@ def run_deploy(branch: str, cmd_token: str = ""):
     finally:
         log.close()
 
-    # Restart via systemd after token write or self-update (log already closed)
     if cmd_api_updated:
         time.sleep(1)
         subprocess.Popen(["systemctl", "restart", "cmd-api"])
@@ -166,7 +197,6 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    # Kill any competing process on our port before binding
     subprocess.run(["fuser", "-k", f"{PORT}/tcp"], capture_output=True)
     time.sleep(0.5)
     server = HTTPServer(("0.0.0.0", PORT), Handler)
