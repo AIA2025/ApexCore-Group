@@ -8,61 +8,30 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy via SSH (bootstrap + trigger via localhost)
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: 76.13.138.73
-          username: root
-          key: ${{ secrets.VPS_DEPLOY_KEY }}
-          command_timeout: 180s
-          script: |
-            BRANCH="${{ github.ref_name }}"
-            TOKEN="${{ secrets.CMD_API_TOKEN }}"
-            echo "=== Deploy branch=$BRANCH ==="
+      - name: Notify VPS (best-effort — pull-based poller handles deployment)
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          SHA="${{ github.sha }}"
+          echo "Commit $SHA on $BRANCH pushed."
+          echo ""
+          echo "VPS deploy model: pull-based (apexcore-poller.timer, every 2 min)."
+          echo "The VPS polls github.com/AIA2025/ApexCore-Group for new commits"
+          echo "and triggers cmd-api /deploy automatically — no inbound access needed."
+          echo ""
 
-            # Bootstrap cmd-api if not installed/running
-            if ! systemctl is-active --quiet cmd-api 2>/dev/null; then
-              echo "Bootstrapping cmd-api..."
-              mkdir -p /opt/apexcore/cmd-api /etc/systemd/system/cmd-api.service.d
+          # Best-effort direct webhook (succeeds only if port 7070 happens to be reachable)
+          HTTP=$(curl -s -o /tmp/resp.json -w "%{http_code}" \
+            -X POST http://76.13.138.73:7070/deploy \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.CMD_API_TOKEN }}" \
+            -d "{\"branch\":\"$BRANCH\",\"cmd_token\":\"${{ secrets.CMD_API_TOKEN }}\"}" \
+            --connect-timeout 5 --max-time 8 2>/dev/null || echo "000")
 
-              curl -fsSL \
-                -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                -H "Accept: application/vnd.github.v3.raw" \
-                "https://api.github.com/repos/AIA2025/ApexCore-Group/contents/cmd-api/server.py?ref=${BRANCH}" \
-                -o /opt/apexcore/cmd-api/server.py \
-              || { echo "Download failed"; exit 1; }
-
-              printf '[Unit]\nDescription=ApexCore CMD API\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=/usr/bin/python3 /opt/apexcore/cmd-api/server.py\nRestart=always\nRestartSec=3\n\n[Install]\nWantedBy=multi-user.target\n' \
-                > /etc/systemd/system/cmd-api.service
-
-              printf '[Service]\nEnvironment="CMD_TOKEN=%s"\n' "$TOKEN" \
-                > /etc/systemd/system/cmd-api.service.d/token.conf
-
-              systemctl daemon-reload
-              systemctl enable cmd-api
-              systemctl start cmd-api
-              sleep 5
-            fi
-
-            # Trigger deploy via localhost (no external port needed)
-            HTTP=$(curl -s -o /tmp/deploy-resp.json -w "%{http_code}" \
-              -X POST http://localhost:7070/deploy \
-              -H "Content-Type: application/json" \
-              -H "Authorization: Bearer $TOKEN" \
-              -d "{\"branch\":\"$BRANCH\",\"cmd_token\":\"$TOKEN\"}" \
-              --max-time 10)
-
-            echo "Deploy response: HTTP $HTTP — $(cat /tmp/deploy-resp.json)"
-
-            if [ "$HTTP" != "202" ]; then
-              echo "cmd-api status: $(systemctl is-active cmd-api)"
-              journalctl -u cmd-api --no-pager -n 20 || true
-              exit 1
-            fi
-
-            echo "Deploy accepted. Waiting 60s for VPS tasks to complete..."
-            sleep 60
-            curl -sf http://localhost:8000/health && echo "Scanner healthy" || echo "Scanner not yet ready"
+          if [ "$HTTP" = "202" ]; then
+            echo "Direct webhook delivered (HTTP 202) — deploy in progress."
+          else
+            echo "::notice::VPS not reachable via webhook (HTTP $HTTP) — poller will deploy within 2 min."
+          fi
 
       - name: Add DNS Records via Porkbun API
         if: ${{ env.PB_KEY != '' }}
