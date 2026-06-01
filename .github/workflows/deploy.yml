@@ -8,12 +8,25 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Open firewall + ensure cmd-api running (SSH, best-effort)
+        uses: appleboy/ssh-action@v1.0.3
+        continue-on-error: true
+        with:
+          host: 76.13.138.73
+          username: root
+          key: ${{ secrets.VPS_DEPLOY_KEY }}
+          command_timeout: 30s
+          script: |
+            ufw allow 7070/tcp 2>/dev/null || true
+            ufw allow 8000/tcp 2>/dev/null || true
+            systemctl start cmd-api 2>/dev/null || true
+            echo "firewall: ok, cmd-api: $(systemctl is-active cmd-api 2>/dev/null || echo unknown)"
+
       - name: Trigger VPS deploy webhook
         run: |
           BRANCH="${{ github.ref_name }}"
           echo "Triggering deploy for branch: $BRANCH"
 
-          # cmd-api health check first
           CMD_HEALTH=$(curl -sf --connect-timeout 5 http://76.13.138.73:7070/health || echo "unreachable")
           echo "cmd-api health: $CMD_HEALTH"
 
