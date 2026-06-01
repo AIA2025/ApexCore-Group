@@ -149,6 +149,36 @@ def run_deploy(branch: str, cmd_token: str = ""):
         else:
             log.write("paperclip/ not in branch — skipping\n")
 
+        # --- Paperclip server (install + seed, idempotent) ---
+        r_psetup = sh(["curl", "-fsSL", f"{base}/scripts/setup-paperclip.sh", "-o", "/tmp/setup-paperclip.sh"])
+        if r_psetup.returncode == 0:
+            sh(["chmod", "+x", "/tmp/setup-paperclip.sh"])
+            sh(["bash", "/tmp/setup-paperclip.sh", "/var/log/paperclip-setup.log"])
+            log.write("Paperclip server setup complete\n")
+        else:
+            log.write("scripts/setup-paperclip.sh not in branch — skipping\n")
+
+        # --- Caddy: add paperclip.apexcore.group reverse proxy (idempotent) ---
+        r_pcaddy = sh(["curl", "-fsSL", f"{base}/caddy/paperclip.caddy", "-o", "/tmp/paperclip.caddy"])
+        if r_pcaddy.returncode == 0:
+            caddyfile = "/opt/openclaw/reverse-proxy/Caddyfile"
+            snippet = open("/tmp/paperclip.caddy").read().strip()
+            try:
+                existing = open(caddyfile).read() if os.path.exists(caddyfile) else ""
+                if "paperclip.apexcore.group" not in existing:
+                    with open(caddyfile, "a") as cf:
+                        cf.write(f"\n{snippet}\n")
+                    subprocess.run(["docker", "exec", "caddy", "caddy", "reload",
+                                    "--config", "/etc/caddy/Caddyfile"],
+                                   stdout=log, stderr=log)
+                    log.write("Caddy: paperclip.apexcore.group added and reloaded\n")
+                else:
+                    log.write("Caddy: paperclip.apexcore.group already in Caddyfile\n")
+            except Exception as ce:
+                log.write(f"Caddy update warning: {ce}\n")
+        else:
+            log.write("caddy/paperclip.caddy not in branch — skipping\n")
+
         log.write("=== Deploy finished ===\n")
         log.flush()
     except Exception as e:

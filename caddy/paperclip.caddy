@@ -1,0 +1,3 @@
+paperclip.apexcore.group {
+    reverse_proxy localhost:3100
+}
