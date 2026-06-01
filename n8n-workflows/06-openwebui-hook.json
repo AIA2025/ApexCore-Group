@@ -1,0 +1,133 @@
+{
+  "name": "Open WebUI → Hermes Dispatcher Hook",
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "dispatch",
+        "responseMode": "responseNode",
+        "options": { "rawBody": false }
+      },
+      "id": "wh-dispatch-receiver",
+      "name": "Webhook — POST /webhook/dispatch",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "apexcore-dispatch"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize payload — accept Open WebUI format {message} or direct {task}\nconst body = $input.first().json.body ?? $input.first().json;\nconst task = (body.task ?? body.message ?? body.content ?? '').trim();\nconst options = body.options ?? {};\nreturn [{ json: { task, options, valid: task.length > 0 } }];"
+      },
+      "id": "code-normalize",
+      "name": "Payload normalisieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false },
+          "conditions": [
+            {
+              "id": "check-task",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "if-task-valid",
+      "name": "Task vorhanden?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [750, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:7071/dispatch",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.DISPATCHER_TOKEN }}" },
+            { "name": "Content-Type",  "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ task: $json.task, options: $json.options }) }}",
+        "options": {
+          "timeout": 120000,
+          "response": { "response": { "neverError": true } }
+        }
+      },
+      "id": "http-dispatcher",
+      "name": "Hermes Dispatcher aufrufen",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1000, 220],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nif (d.error) {\n  return [{ json: { response: `Dispatcher error: ${d.error}`, status: 'BLOCKED', intent: null, worker: null } }];\n}\nconst responseText = d?.result?.response ?? d?.result?.n8n?.response ?? d?.result?.error ?? 'Hermes returned no response.';\nreturn [{ json: { response: responseText, task_id: d?.task_id, status: d?.status, intent: d?.intent, worker: d?.worker, started_at: d?.started_at, completed_at: d?.completed_at } }];"
+      },
+      "id": "code-format",
+      "name": "Response formatieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 220]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "resp-ok",
+      "name": "Respond to WebUI",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1500, 220]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: 'Missing task or message field', status: 'BLOCKED' }) }}",
+        "options": { "responseCode": 400 }
+      },
+      "id": "resp-error",
+      "name": "Error — Missing Task",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1000, 420]
+    }
+  ],
+  "connections": {
+    "Webhook — POST /webhook/dispatch": {
+      "main": [[{ "node": "Payload normalisieren", "type": "main", "index": 0 }]]
+    },
+    "Payload normalisieren": {
+      "main": [[{ "node": "Task vorhanden?", "type": "main", "index": 0 }]]
+    },
+    "Task vorhanden?": {
+      "main": [
+        [{ "node": "Hermes Dispatcher aufrufen", "type": "main", "index": 0 }],
+        [{ "node": "Error — Missing Task",        "type": "main", "index": 0 }]
+      ]
+    },
+    "Hermes Dispatcher aufrufen": {
+      "main": [[{ "node": "Response formatieren", "type": "main", "index": 0 }]]
+    },
+    "Response formatieren": {
+      "main": [[{ "node": "Respond to WebUI", "type": "main", "index": 0 }]]
+    }
+  }
+}

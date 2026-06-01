@@ -1,0 +1,96 @@
+# ApexCore — Caddyfile V1
+# Reverse Proxy: TLS termination + domain routing
+#
+# Caddy resolves backend services by Docker container name (DNS within shared networks).
+# Caddy joins: infra_net, ai_net, automation_net
+# All backends must be in one of those networks.
+#
+# TLS: automatic via Let's Encrypt (ACME). Requires port 80+443 open and valid DNS.
+# Reload: docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+
+{
+	email {$CADDY_EMAIL}
+	admin off
+}
+
+# ─── AI Frontend ───────────────────────────────────────────────────────────
+
+# Primary Operator Console
+ai.apexcore.group {
+	reverse_proxy open-webui:8080
+	encode gzip
+}
+
+# Legacy alias — permanent redirect
+openwebui.apexcore.group {
+	redir https://ai.apexcore.group{uri} permanent
+}
+
+# Hermes Control Panel (admin-facing — consider IP restriction)
+hermes.apexcore.group {
+	reverse_proxy hermes-webui:8080
+	encode gzip
+}
+
+# ─── Automation ────────────────────────────────────────────────────────────
+
+n8n.apexcore.group {
+	reverse_proxy n8n:5678 {
+		header_up Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+	encode gzip
+}
+
+# ─── Ops / Messenger Agent ─────────────────────────────────────────────────
+
+# Clean domain for OpenClaw (V1 primary)
+ops.apexcore.group {
+	reverse_proxy openclaw:8000
+	encode gzip
+}
+
+# Legacy OpenClaw domain — kept for backward compat
+# /n8n/* → n8n, everything else → openclaw
+oc.apexcore.group {
+	handle /n8n/* {
+		uri strip_prefix /n8n
+		reverse_proxy n8n:5678
+	}
+	handle {
+		reverse_proxy openclaw:8000 {
+			header_up Host {http.request.host}
+			header_up X-Real-IP {http.request.remote}
+		}
+	}
+	encode gzip
+}
+
+oc-staging.apexcore.group {
+	reverse_proxy openclaw:8000 {
+		header_up Host {http.request.host}
+		header_up X-Real-IP {http.request.remote}
+		header_up X-Forwarded-For {http.request.remote}
+		header_up X-Forwarded-Proto {scheme}
+	}
+	encode gzip
+}
+
+# ─── Management Layer — V2 (not yet active) ────────────────────────────────
+
+paperclip.apexcore.group {
+	# Activate when paperclip profile is started:
+	# reverse_proxy paperclip:80
+	# Note: container port is 80 (compose maps host:3002 → container:80)
+	respond "Paperclip Management Layer — not yet active (V2). See docs/PAPERCLIP_PREP.md" 503
+}
+
+# ─── Static Dashboard ──────────────────────────────────────────────────────
+
+dashboard.apexcore.group {
+	root * /srv/dashboard
+	file_server
+	encode gzip
+}

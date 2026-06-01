@@ -1,0 +1,55 @@
+# infra-compose/docker-compose.yml
+# Stack: Reverse Proxy (Caddy)
+#
+# START LAST — ai-stack and automation-stack must run first
+# so their networks (ai_net, automation_net) exist before Caddy joins them.
+#
+# Usage:
+#   cd /srv/apexcore && docker compose -f infra-compose/docker-compose.yml up -d
+
+networks:
+  infra_net:
+    name: infra_net
+    driver: bridge
+  ai_net:
+    name: ai_net
+    external: true
+  automation_net:
+    name: automation_net
+    external: true
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    profiles:
+      - caddy  # disabled by default — nginx on the VPS host handles TLS termination
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - /srv/apexcore/dashboard:/srv/dashboard:ro
+    networks:
+      - infra_net
+      - ai_net
+      - automation_net
+    env_file:
+      - .env
+    healthcheck:
+      # nc (netcat) is available via busybox in alpine — checks TCP port 80 is listening
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 80"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  caddy_data:
+    name: caddy_data
+  caddy_config:
+    name: caddy_config

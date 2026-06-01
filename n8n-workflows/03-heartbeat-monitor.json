@@ -1,0 +1,66 @@
+{
+  "name": "Heartbeat Monitor",
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "hours", "hoursInterval": 12 }]
+        }
+      },
+      "id": "sched-hb-01",
+      "name": "Every 12h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const svcs = [\n  { name: 'n8n', url: 'http://localhost:5678' },\n  { name: 'Hermes', url: 'http://localhost:32772' },\n  { name: 'Ollama', url: 'http://localhost:3000' },\n  { name: 'Paperclip', url: 'http://localhost:52309' },\n  { name: 'Dashboard', url: 'http://localhost:3011' }\n];\nconst r = [];\nfor (const s of svcs) {\n  try {\n    await this.helpers.httpRequest({ method: 'GET', url: s.url, timeout: 5000 });\n    r.push({ name: s.name, status: 'online' });\n  } catch(e) {\n    r.push({ name: s.name, status: 'offline' });\n  }\n}\nconst online = r.filter(x => x.status === 'online').length;\nconst summary = r.map(x => (x.status === 'online' ? '✅ ' : '❌ ') + x.name).join(' | ');\nreturn [{ json: { services: r, online, total: r.length, summary, ts: new Date().toISOString() } }];"
+      },
+      "id": "code-hb-01",
+      "name": "Check All",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "create",
+        "databaseId": {
+          "__rl": true,
+          "value": "__NOTION_DB_ID__",
+          "mode": "id"
+        },
+        "title": "={{ 'Heartbeat ' + $json.ts.substring(0,10) + ' — ' + $json.online + '/' + $json.total + ' online' }}",
+        "propertiesUi": { "propertyValues": [] },
+        "blockUi": {
+          "blockValues": [
+            {
+              "type": "paragraph",
+              "paragraph": "={{ $json.summary }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "notion-hb-01",
+      "name": "Log Notion",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [750, 300],
+      "credentials": {
+        "notionApi": {
+          "id": "__NOTION_ID__",
+          "name": "Notion API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 12h": { "main": [[{ "node": "Check All", "type": "main", "index": 0 }]] },
+    "Check All": { "main": [[{ "node": "Log Notion", "type": "main", "index": 0 }]] }
+  }
+}

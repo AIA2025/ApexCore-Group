@@ -1,0 +1,136 @@
+{
+  "name": "Task Completion Notify",
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "log",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "wh-log-receiver",
+      "name": "Webhook — Log empfangen",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "apexcore-log"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.body.status }}",
+              "rightValue": "DONE",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-status-done",
+      "name": "Nur wenn DONE",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body;\nconst intent = body?.intent ?? 'UNKNOWN';\nconst taskId = body?.task_id ?? '—';\nconst preview = (body?.result?.response ?? body?.result ?? '').toString().substring(0, 300);\n\nconst message = [\n  `✅ Task ${taskId} abgeschlossen`,\n  `Intent: ${intent}`,\n  preview ? `\\nErgebnis: ${preview}...` : ''\n].filter(Boolean).join('\\n');\n\nreturn [{ json: { message, task_id: taskId, intent } }];"
+      },
+      "id": "code-format-notify",
+      "name": "Nachricht formatieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [750, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://openclaw:8000/send",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={{ JSON.stringify({ message: $json.message, channel: 'telegram' }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "http-openclaw-send",
+      "name": "OpenClaw — Telegram senden",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1000, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NOTION_LOG_WEBHOOK ?? 'https://n8n.apexcore.group/webhook/notion-log' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={{ JSON.stringify({ task_id: $('Webhook — Log empfangen').first().json.body.task_id, intent: $('Webhook — Log empfangen').first().json.body.intent, status: 'DONE', timestamp: new Date().toISOString(), result_preview: ($('Webhook — Log empfangen').first().json.body?.result?.response ?? '').toString().substring(0, 500) }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "http-notion-log",
+      "name": "Notion Audit Log (optional)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1000, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ received: true, status: $('Webhook — Log empfangen').first().json.body.status }) }}",
+        "options": {}
+      },
+      "id": "resp-ack",
+      "name": "ACK Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1250, 300]
+    }
+  ],
+  "connections": {
+    "Webhook — Log empfangen": { "main": [[{ "node": "Nur wenn DONE", "type": "main", "index": 0 }]] },
+    "Nur wenn DONE": {
+      "main": [
+        [{ "node": "Nachricht formatieren", "type": "main", "index": 0 }],
+        [{ "node": "ACK Response", "type": "main", "index": 0 }]
+      ]
+    },
+    "Nachricht formatieren": {
+      "main": [
+        [
+          { "node": "OpenClaw — Telegram senden", "type": "main", "index": 0 },
+          { "node": "Notion Audit Log (optional)", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "OpenClaw — Telegram senden": { "main": [[{ "node": "ACK Response", "type": "main", "index": 0 }]] }
+  }
+}

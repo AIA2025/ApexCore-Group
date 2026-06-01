@@ -1,0 +1,96 @@
+{
+  "name": "Daily Brief",
+  "active": true,
+  "settings": { "executionOrder": "v1" },
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "cron-daily-brief",
+      "name": "Every Weekday 07:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://hermes-agent:4000/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.LITELLM_MASTER_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'hermes-default', messages: [{ role: 'system', content: 'Du bist Hermes, der COO von ApexCore. Erstelle ein präzises Daily Brief für den Founder. Fokus: Offene Tasks, heutige Prioritäten, wichtige Hinweise. Maximal 300 Wörter. Strukturiert, kein Fülltext.' }, { role: 'user', content: 'Daily Brief für ' + new Date().toLocaleDateString('de-DE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) }] }) }}",
+        "options": {}
+      },
+      "id": "http-hermes-brief",
+      "name": "Hermes — Daily Brief generieren",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst content = raw?.choices?.[0]?.message?.content ?? 'Hermes konnte kein Brief generieren.';\nconst today = new Date().toLocaleDateString('de-DE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });\nreturn [{ json: { brief: content, date: today, model: raw?.model ?? 'unknown' } }];"
+      },
+      "id": "code-extract-brief",
+      "name": "Brief extrahieren",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [750, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://n8n.apexcore.group/webhook/log",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "jsonBody": "={{ JSON.stringify({ event: 'daily_brief', date: $json.date, model: $json.model, brief_preview: $json.brief.substring(0, 200) }) }}",
+        "options": {}
+      },
+      "id": "http-log-brief",
+      "name": "Audit Log schreiben",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1000, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'sent', date: $json.date }) }}",
+        "options": {}
+      },
+      "id": "resp-brief",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1250, 300]
+    }
+  ],
+  "connections": {
+    "Every Weekday 07:00": { "main": [[{ "node": "Hermes — Daily Brief generieren", "type": "main", "index": 0 }]] },
+    "Hermes — Daily Brief generieren": { "main": [[{ "node": "Brief extrahieren", "type": "main", "index": 0 }]] },
+    "Brief extrahieren": { "main": [[{ "node": "Audit Log schreiben", "type": "main", "index": 0 }]] },
+    "Audit Log schreiben": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
+  }
+}
