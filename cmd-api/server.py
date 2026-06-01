@@ -1,183 +1,272 @@
 #!/usr/bin/env python3
-"""ApexCore CMD API — webhook gateway on port 7070"""
+"""
+ApexCore Command API — v2
+Lightweight HTTP control endpoint for deployment hooks and status checks.
+Port: 7070  |  Auth: Bearer token via CMD_TOKEN env var
 
-import json
+GET  /health            — unauthenticated liveness check
+GET  /status            — container status summary (authenticated)
+POST /deploy            — pull latest code + apply config + restart services (authenticated, async → 202)
+POST /caddy/reload      — reload Caddy config (authenticated)
+POST /exec              — run whitelisted shell commands (authenticated)
+"""
+
 import os
+import re
+import json
+import glob
+import shutil
 import subprocess
 import threading
 import time
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from datetime import datetime
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from urllib.parse import urlparse
 
-TOKEN = os.getenv("CMD_TOKEN", "")
-RAW_BASE = "https://raw.githubusercontent.com/AIA2025/apexcore"
-PORT = 7070
+CMD_TOKEN = os.environ.get("CMD_TOKEN", "")
+PORT = int(os.environ.get("CMD_API_PORT", "7070"))
+APEXCORE_DIR = "/srv/apexcore"
+DEPLOY_LOG = "/var/log/apexcore-deploy.log"
+
+# Whitelist of allowed command prefixes — prevents arbitrary shell execution
+ALLOWED_COMMANDS = [
+    "docker compose",
+    "docker ps",
+    "docker logs",
+    "docker inspect",
+    "systemctl status",
+]
 
 
-def run_deploy(branch: str, cmd_token: str = ""):
-    """Pull latest code from GitHub, self-update cmd-api, restart scanner."""
-    log = open("/var/log/cmd-api-deploy.log", "a")
-    cmd_api_updated = False
+def is_allowed(cmd: str) -> bool:
+    return any(cmd.strip().startswith(prefix) for prefix in ALLOWED_COMMANDS)
 
-    def sh(cmd, **kw):
-        log.write(f"+ {' '.join(cmd)}\n")
-        log.flush()
-        return subprocess.run(cmd, stdout=log, stderr=log, **kw)
 
-    try:
-        log.write(f"\n=== Deploy branch={branch} at {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} ===\n")
-        base = f"{RAW_BASE}/{branch}"
+def _run(args, log_fh, timeout=60, **kwargs):
+    result = subprocess.run(
+        args, stdout=log_fh, stderr=log_fh, timeout=timeout, **kwargs
+    )
+    log_fh.flush()
+    return result
 
-        sh(["mkdir", "-p", "/opt/apexcore-mvp/output", "/opt/apexcore-dashboard",
-            "/opt/apexcore/cmd-api", "/srv/apexcore/cmd-api",
-            "/opt/apexcore/hermes", "/opt/apexcore/paperclip"])
 
-        if cmd_token:
-            try:
-                os.makedirs("/etc/systemd/system/cmd-api.service.d", exist_ok=True)
-                with open("/etc/systemd/system/cmd-api.service.d/token.conf", "w") as tf:
-                    tf.write(f'[Service]\nEnvironment="CMD_TOKEN={cmd_token}"\n')
-                log.write("CMD_TOKEN written to systemd override\n")
-                cmd_api_updated = True
-            except Exception as te:
-                log.write(f"CMD_TOKEN write warning: {te}\n")
-
-        _pubkey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAJUctsIPmWIWj2nevAnFwYzAzomE3cUbv0nahBFauej apexcore-deploy"
-        _ssh_dir, _auth = "/root/.ssh", "/root/.ssh/authorized_keys"
+def _deploy_background(branch: str):
+    with open(DEPLOY_LOG, "a") as f:
+        f.write(f"\n=== Deploy: {branch} @ {datetime.now().isoformat()} ===\n")
         try:
-            os.makedirs(_ssh_dir, mode=0o700, exist_ok=True)
-            _existing = open(_auth).read() if os.path.exists(_auth) else ""
-            if "apexcore-deploy" not in _existing:
-                with open(_auth, "a") as _f:
-                    _f.write(f"\n{_pubkey}\n")
-                os.chmod(_auth, 0o600)
-                log.write("SSH apexcore-deploy key added to authorized_keys\n")
+            # ── Pull latest code ──────────────────────────────────────────
+            _run(["git", "-C", APEXCORE_DIR, "fetch", "origin"], f, timeout=30)
+            _run(["git", "-C", APEXCORE_DIR, "checkout", branch], f, timeout=10)
+            _run(["git", "-C", APEXCORE_DIR, "pull", "origin", branch], f, timeout=30)
+
+            scripts = glob.glob(f"{APEXCORE_DIR}/scripts/*.sh")
+            if scripts:
+                subprocess.run(["chmod", "+x"] + scripts, stdout=f, stderr=f)
+
+            # ── nginx vhost ───────────────────────────────────────────────
+            src = f"{APEXCORE_DIR}/infra-compose/nginx-vhost.conf"
+            dst = "/etc/nginx/sites-available/apexcore.conf"
+            link = "/etc/nginx/sites-enabled/apexcore.conf"
+            if os.path.exists(src) and shutil.which("nginx"):
+                shutil.copy(src, dst)
+                os.makedirs("/etc/nginx/sites-enabled", exist_ok=True)
+                if not os.path.lexists(link):
+                    os.symlink(dst, link)
+                t = subprocess.run(["nginx", "-t"], capture_output=True, text=True)
+                if t.returncode == 0:
+                    _run(["nginx", "-s", "reload"], f, timeout=10)
+                    f.write("nginx: reloaded\n")
+                else:
+                    f.write(f"nginx -t failed: {t.stderr}\n")
+
+            # ── Static assets ─────────────────────────────────────────────
+            os.makedirs("/opt/apexcore-dashboard", exist_ok=True)
+            idx = f"{APEXCORE_DIR}/dashboard/index.html"
+            if os.path.exists(idx):
+                shutil.copy(idx, "/opt/apexcore-dashboard/index.html")
+
+            # ── Restart dispatcher ────────────────────────────────────────
+            env_file = f"{APEXCORE_DIR}/cmd-api/.env.dispatcher"
+            if os.path.exists(env_file):
+                subprocess.run(["pkill", "-f", "hermes_dispatcher.py"],
+                               stdout=f, stderr=f)
+                time.sleep(1)
+                env_vars = {}
+                with open(env_file) as ef:
+                    for line in ef:
+                        line = line.strip()
+                        if line and not line.startswith("#") and "=" in line:
+                            k, v = line.split("=", 1)
+                            env_vars[k.strip()] = v.strip()
+                subprocess.Popen(
+                    ["python3", f"{APEXCORE_DIR}/cmd-api/hermes_dispatcher.py"],
+                    env={**os.environ, **env_vars},
+                    stdout=open("/var/log/apexcore-dispatcher.log", "a"),
+                    stderr=subprocess.STDOUT,
+                )
+                f.write("dispatcher: restarted\n")
+
+            # ── n8n_data volume guard ─────────────────────────────────────
+            r = subprocess.run(["docker", "volume", "inspect", "n8n_data"],
+                               capture_output=True)
+            if r.returncode != 0:
+                _run(["docker", "volume", "create", "n8n_data"], f)
+
+            # ── Compose stacks ────────────────────────────────────────────
+            ai_net = subprocess.run(
+                ["docker", "network", "inspect", "ai_net"], capture_output=True
+            )
+            if ai_net.returncode == 0:
+                for cf in [
+                    "ai-stack/docker-compose.yml",
+                    "automation-stack/docker-compose.yml",
+                    "infra-compose/docker-compose.yml",
+                ]:
+                    _run(
+                        ["docker", "compose", "-f", f"{APEXCORE_DIR}/{cf}",
+                         "up", "-d", "--remove-orphans"],
+                        f, timeout=120
+                    )
+                f.write("compose: stacks refreshed\n")
             else:
-                log.write("SSH apexcore-deploy key already present\n")
-        except Exception as _ex:
-            log.write(f"SSH key warning: {_ex}\n")
+                f.write("compose: ai_net not found — run stack-start.sh first\n")
 
-        r_self = sh(["curl", "-fsSL", f"{base}/cmd-api/server.py", "-o", "/tmp/cmd-api-new.py"])
-        if r_self.returncode == 0:
-            sh(["cp", "/tmp/cmd-api-new.py", "/opt/apexcore/cmd-api/server.py"])
-            sh(["cp", "/tmp/cmd-api-new.py", "/srv/apexcore/cmd-api/server.py"])
-            log.write("cmd-api self-updated in /opt/ and /srv/\n")
-            cmd_api_updated = True
-        else:
-            log.write("cmd-api/server.py not in branch — skipping self-update\n")
-
-        r_main = sh(["curl", "-fsSL", f"{base}/apexcore-mvp/main.py", "-o", "/tmp/scanner-main.py"])
-        r_req  = sh(["curl", "-fsSL", f"{base}/apexcore-mvp/requirements.txt", "-o", "/tmp/scanner-req.txt"])
-
-        if r_main.returncode == 0 and r_req.returncode == 0:
-            sh(["cp", "/tmp/scanner-main.py", "/opt/apexcore-mvp/main.py"])
-            sh(["cp", "/tmp/scanner-req.txt", "/opt/apexcore-mvp/requirements.txt"])
-            sh(["pip3", "install", "-r", "/opt/apexcore-mvp/requirements.txt", "--break-system-packages", "-q"])
-            r_dash = sh(["curl", "-fsSL", f"{base}/dashboard/index.html", "-o", "/opt/apexcore-dashboard/index.html"])
-            if r_dash.returncode != 0:
-                log.write("dashboard/index.html not in branch, skipping\n")
-            env_path = "/opt/apexcore-mvp/.env"
-            if not os.path.exists(env_path):
-                with open(env_path, "w") as f:
-                    f.write("ANTHROPIC_API_KEY=PLACEHOLDER\nOUTPUT_DIR=/opt/apexcore-mvp/output\n")
-                log.write(".env created with placeholders\n")
-            else:
-                log.write(".env already exists, not overwriting\n")
-            cache = os.path.expanduser("~/.cache/ms-playwright")
-            if not os.path.isdir(cache) or not os.listdir(cache):
-                sh(["python3", "-m", "playwright", "install", "chromium"])
-                sh(["python3", "-m", "playwright", "install-deps", "chromium"])
-            subprocess.run(["pkill", "-f", "uvicorn main:app"], capture_output=True)
-            time.sleep(2)
-            subprocess.Popen(["python3", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"],
-                             cwd="/opt/apexcore-mvp", stdout=open("/var/log/apexcore-mvp.log", "a"), stderr=subprocess.STDOUT)
-            time.sleep(5)
-            result = subprocess.run(["curl", "-sf", "http://localhost:8000/health"], capture_output=True, text=True)
-            log.write(f"Scanner {'healthy: ' + result.stdout if result.returncode == 0 else 'health check FAILED'}\n")
-        else:
-            log.write("apexcore-mvp/ not in branch — scanner not updated\n")
-
-        r_hjs = sh(["curl", "-fsSL", f"{base}/hermes/dispatcher.js", "-o", "/tmp/hermes-dispatcher.js"])
-        r_hpk = sh(["curl", "-fsSL", f"{base}/hermes/package.json",  "-o", "/tmp/hermes-package.json"])
-        r_hsv = sh(["curl", "-fsSL", f"{base}/hermes/hermes.service", "-o", "/tmp/hermes.service"])
-        if r_hjs.returncode == 0:
-            sh(["cp", "/tmp/hermes-dispatcher.js", "/opt/apexcore/hermes/dispatcher.js"])
-            if r_hpk.returncode == 0:
-                sh(["cp", "/tmp/hermes-package.json", "/opt/apexcore/hermes/package.json"])
-                subprocess.run(["npm", "install", "--omit=dev", "--quiet"], cwd="/opt/apexcore/hermes", stdout=log, stderr=log)
-            if r_hsv.returncode == 0:
-                sh(["cp", "/tmp/hermes.service", "/etc/systemd/system/hermes.service"])
-                sh(["systemctl", "daemon-reload"])
-                sh(["systemctl", "enable", "hermes"])
-                sh(["systemctl", "restart", "hermes"])
-            log.write("Hermes Dispatcher deployed\n")
-        else:
-            log.write("hermes/ not in branch — skipping\n")
-
-        r_seed = sh(["curl", "-fsSL", f"{base}/paperclip/seed.sh", "-o", "/tmp/paperclip-seed.sh"])
-        r_areg = sh(["curl", "-fsSL", f"{base}/paperclip/agent-registration.json", "-o", "/tmp/paperclip-agent-reg.json"])
-        if r_seed.returncode == 0:
-            sh(["cp", "/tmp/paperclip-seed.sh", "/opt/apexcore/paperclip/seed.sh"])
-            sh(["chmod", "+x", "/opt/apexcore/paperclip/seed.sh"])
-            if r_areg.returncode == 0:
-                sh(["cp", "/tmp/paperclip-agent-reg.json", "/opt/apexcore/paperclip/agent-registration.json"])
-            log.write("Paperclip seeds updated\n")
-        else:
-            log.write("paperclip/ not in branch — skipping\n")
-
-        log.write("=== Deploy finished ===\n")
-        log.flush()
-    except Exception as e:
-        log.write(f"Deploy error: {e}\n")
-    finally:
-        log.close()
-
-    if cmd_api_updated:
-        time.sleep(1)
-        subprocess.Popen(["systemctl", "restart", "cmd-api"])
+            f.write(f"=== Deploy complete: {datetime.now().isoformat()} ===\n")
+        except Exception as e:
+            f.write(f"Deploy error: {e}\n")
 
 
 class Handler(BaseHTTPRequestHandler):
-    def _respond(self, code: int, body: dict):
-        data = json.dumps(body).encode()
+    def log_message(self, format, *args):
+        print(f"[cmd-api] {self.address_string()} {format % args}", flush=True)
+
+    def send_json(self, code: int, data: dict):
+        body = json.dumps(data).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(data)
+        self.wfile.write(body)
 
-    def _auth_ok(self) -> bool:
-        if not TOKEN:
-            return True
+    def authenticated(self) -> bool:
+        if not CMD_TOKEN:
+            return False
         auth = self.headers.get("Authorization", "")
-        return auth in (f"Bearer {TOKEN}", TOKEN)
+        token = auth.removeprefix("Bearer ").strip()
+        if not token:
+            token = self.headers.get("X-Token", "").strip()
+        return token == CMD_TOKEN
+
+    def read_body(self) -> dict:
+        length = int(self.headers.get("Content-Length", 0))
+        if length == 0:
+            return {}
+        try:
+            return json.loads(self.rfile.read(length))
+        except Exception:
+            return {}
 
     def do_GET(self):
-        if self.path == "/health":
-            self._respond(200, {"status": "ok", "service": "cmd-api", "port": PORT})
-        else:
-            self._respond(404, {"error": "not found"})
+        path = urlparse(self.path).path
+
+        if path == "/health":
+            self.send_json(200, {"status": "ok", "service": "cmd-api"})
+            return
+
+        if not self.authenticated():
+            self.send_json(401, {"error": "unauthorized"})
+            return
+
+        if path == "/status":
+            try:
+                result = subprocess.run(
+                    ["docker", "ps", "--format", "{{.Names}}\t{{.Status}}\t{{.Image}}"],
+                    capture_output=True, text=True, timeout=10
+                )
+                containers = []
+                for line in result.stdout.strip().splitlines():
+                    parts = line.split("\t")
+                    if len(parts) == 3:
+                        containers.append({
+                            "name": parts[0],
+                            "status": parts[1],
+                            "image": parts[2],
+                        })
+                self.send_json(200, {"containers": containers})
+            except Exception as e:
+                self.send_json(500, {"error": str(e)})
+            return
+
+        self.send_json(404, {"error": "not found"})
 
     def do_POST(self):
-        if self.path == "/deploy":
-            if not self._auth_ok():
-                self._respond(403, {"error": "unauthorized"})
-                return
-            length = int(self.headers.get("Content-Length", 0))
-            body = json.loads(self.rfile.read(length) or b"{}") if length else {}
-            branch = body.get("branch", "main")
-            cmd_token = body.get("cmd_token", "")
-            threading.Thread(target=run_deploy, args=(branch, cmd_token), daemon=True).start()
-            self._respond(202, {"status": "deploying", "branch": branch})
-        else:
-            self._respond(404, {"error": "not found"})
+        if not self.authenticated():
+            self.send_json(401, {"error": "unauthorized"})
+            return
 
-    def log_message(self, fmt, *args):
-        pass
+        path = urlparse(self.path).path
+
+        if path == "/deploy":
+            body = self.read_body()
+            branch = body.get("branch", "main").strip()
+            # Permit only safe branch names — no shell injection
+            if not re.match(r'^[a-zA-Z0-9_/.-]+$', branch) or ".." in branch:
+                self.send_json(400, {"error": "invalid branch name"})
+                return
+            threading.Thread(
+                target=_deploy_background, args=(branch,), daemon=True
+            ).start()
+            self.send_json(202, {
+                "status": "accepted",
+                "branch": branch,
+                "log": DEPLOY_LOG,
+            })
+            return
+
+        if path == "/caddy/reload":
+            try:
+                result = subprocess.run(
+                    ["docker", "exec", "caddy", "caddy", "reload",
+                     "--config", "/etc/caddy/Caddyfile"],
+                    capture_output=True, text=True, timeout=30
+                )
+                if result.returncode == 0:
+                    self.send_json(200, {"status": "reloaded"})
+                else:
+                    self.send_json(500, {"error": result.stderr.strip()})
+            except Exception as e:
+                self.send_json(500, {"error": str(e)})
+            return
+
+        if path == "/exec":
+            body = self.read_body()
+            cmd = body.get("cmd", "").strip()
+            if not cmd:
+                self.send_json(400, {"error": "missing 'cmd' field"})
+                return
+            if not is_allowed(cmd):
+                self.send_json(403, {"error": "command not in whitelist"})
+                return
+            try:
+                result = subprocess.run(
+                    cmd.split(), capture_output=True, text=True, timeout=60
+                )
+                self.send_json(200, {
+                    "stdout": result.stdout,
+                    "stderr": result.stderr,
+                    "rc": result.returncode,
+                })
+            except Exception as e:
+                self.send_json(500, {"error": str(e)})
+            return
+
+        self.send_json(404, {"error": "not found"})
 
 
 if __name__ == "__main__":
-    subprocess.run(["fuser", "-k", f"{PORT}/tcp"], capture_output=True)
-    time.sleep(0.5)
+    if not CMD_TOKEN:
+        print("[cmd-api] WARNING: CMD_TOKEN not set — authenticated endpoints are disabled",
+              flush=True)
     server = HTTPServer(("0.0.0.0", PORT), Handler)
-    print(f"CMD API running on :{PORT}  (token={'set' if TOKEN else 'unset'})")
+    print(f"[cmd-api] Listening on :{PORT}", flush=True)
     server.serve_forever()
