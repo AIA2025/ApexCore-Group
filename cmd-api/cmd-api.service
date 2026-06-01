@@ -1,0 +1,20 @@
+[Unit]
+Description=ApexCore cmd-api — webhook deploy gateway
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/srv/apexcore/cmd-api
+ExecStart=/usr/bin/python3 /srv/apexcore/cmd-api/server.py
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/cmd-api.log
+StandardError=append:/var/log/cmd-api.log
+
+# Load CMD_TOKEN from .env.dispatcher if present
+EnvironmentFile=-/srv/apexcore/cmd-api/.env.dispatcher
+
+[Install]
+WantedBy=multi-user.target

@@ -15,7 +15,7 @@ PORT = 7070
 
 def run_deploy(branch: str, cmd_token: str = ""):
     """Pull latest code from GitHub, self-update cmd-api, restart scanner."""
-    log = open("/var/log/cmd-api-deploy.log", "a")
+    log = open("/tmp/cmd-api-deploy.log", "a")
     cmd_api_updated = False
 
     def sh(cmd, **kw):

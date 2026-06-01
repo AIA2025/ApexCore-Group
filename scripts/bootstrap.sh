@@ -37,8 +37,9 @@ ExecStartPre=/bin/bash -c 'fuser -k 7070/tcp 2>/dev/null || true; sleep 1'
 ExecStart=/usr/bin/python3 /opt/apexcore/cmd-api/server.py
 Restart=always
 RestartSec=5
-StandardOutput=append:/var/log/cmd-api.log
-StandardError=append:/var/log/cmd-api.log
+StartLimitAction=none
+StandardOutput=append:/tmp/cmd-api.log
+StandardError=append:/tmp/cmd-api.log
 WorkingDirectory=/opt/apexcore/cmd-api
 Environment=CMD_TOKEN=
 
@@ -85,7 +86,7 @@ if echo "$RESP" | grep -q '"deploying"'; then
   echo "  systemd will auto-restart it on reboot."
   echo ""
   echo "  Live logs:  journalctl -u cmd-api -f"
-  echo "  Deploy log: tail -f /var/log/cmd-api-deploy.log"
+  echo "  Deploy log: tail -f /tmp/cmd-api-deploy.log"
   echo "══════════════════════════════════════════════"
 elif echo "$RESP" | grep -q '"unauthorized"'; then
   echo "══════════════════════════════════════════════"
@@ -94,7 +95,7 @@ elif echo "$RESP" | grep -q '"unauthorized"'; then
   echo "  CI will authenticate via CMD_API_TOKEN secret."
   echo ""
   echo "  Live logs:  journalctl -u cmd-api -f"
-  echo "  Deploy log: tail -f /var/log/cmd-api-deploy.log"
+  echo "  Deploy log: tail -f /tmp/cmd-api-deploy.log"
   echo "══════════════════════════════════════════════"
 else
   echo "ERROR: /deploy returned unexpected response"
