@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 TOKEN = os.getenv("CMD_TOKEN", "")
 RAW_BASE = "https://raw.githubusercontent.com/AIA2025/apexcore"
+GROUP_BASE = "https://raw.githubusercontent.com/AIA2025/ApexCore-Group"
 PORT = 7070
 
 
@@ -25,7 +26,8 @@ def run_deploy(branch: str, cmd_token: str = ""):
 
     try:
         log.write(f"\n=== Deploy branch={branch} at {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} ===\n")
-        base = f"{RAW_BASE}/{branch}"
+        base  = f"{RAW_BASE}/{branch}"       # AIA2025/apexcore  — scanner, dashboard
+        gbase = f"{GROUP_BASE}/{branch}"     # AIA2025/ApexCore-Group — hermes, paperclip, caddy, scripts
 
         sh(["mkdir", "-p", "/opt/apexcore-mvp/output", "/opt/apexcore-dashboard",
             "/opt/apexcore/cmd-api", "/srv/apexcore/cmd-api",
@@ -64,8 +66,8 @@ def run_deploy(branch: str, cmd_token: str = ""):
         except Exception as _ex:
             log.write(f"SSH key warning: {_ex}\n")
 
-        # --- cmd-api self-update (always attempt, never fatal) ---
-        r_self = sh(["curl", "-fsSL", f"{base}/cmd-api/server.py", "-o", "/tmp/cmd-api-new.py"])
+        # --- cmd-api self-update (from apexcore-group) ---
+        r_self = sh(["curl", "-fsSL", f"{gbase}/cmd-api/server.py", "-o", "/tmp/cmd-api-new.py"])
         if r_self.returncode == 0:
             sh(["cp", "/tmp/cmd-api-new.py", "/opt/apexcore/cmd-api/server.py"])
             sh(["cp", "/tmp/cmd-api-new.py", "/srv/apexcore/cmd-api/server.py"])
@@ -75,9 +77,9 @@ def run_deploy(branch: str, cmd_token: str = ""):
             log.write("cmd-api/server.py not in branch — skipping self-update\n")
 
         # --- poller (pull-based deploy agent, idempotent) ---
-        r_poll = sh(["curl", "-fsSL", f"{base}/cmd-api/poller.sh", "-o", "/tmp/poller.sh"])
-        r_psvc = sh(["curl", "-fsSL", f"{base}/cmd-api/apexcore-poller.service", "-o", "/tmp/apexcore-poller.service"])
-        r_ptmr = sh(["curl", "-fsSL", f"{base}/cmd-api/apexcore-poller.timer",   "-o", "/tmp/apexcore-poller.timer"])
+        r_poll = sh(["curl", "-fsSL", f"{gbase}/cmd-api/poller.sh", "-o", "/tmp/poller.sh"])
+        r_psvc = sh(["curl", "-fsSL", f"{gbase}/cmd-api/apexcore-poller.service", "-o", "/tmp/apexcore-poller.service"])
+        r_ptmr = sh(["curl", "-fsSL", f"{gbase}/cmd-api/apexcore-poller.timer",   "-o", "/tmp/apexcore-poller.timer"])
         if r_poll.returncode == 0:
             sh(["cp", "/tmp/poller.sh", "/opt/apexcore/cmd-api/poller.sh"])
             sh(["chmod", "+x", "/opt/apexcore/cmd-api/poller.sh"])
@@ -121,9 +123,9 @@ def run_deploy(branch: str, cmd_token: str = ""):
         else:
             log.write("apexcore-mvp/ not in branch — scanner not updated\n")
 
-        r_hjs = sh(["curl", "-fsSL", f"{base}/hermes/dispatcher.js", "-o", "/tmp/hermes-dispatcher.js"])
-        r_hpk = sh(["curl", "-fsSL", f"{base}/hermes/package.json", "-o", "/tmp/hermes-package.json"])
-        r_hsv = sh(["curl", "-fsSL", f"{base}/hermes/hermes.service", "-o", "/tmp/hermes.service"])
+        r_hjs = sh(["curl", "-fsSL", f"{gbase}/hermes/dispatcher.js", "-o", "/tmp/hermes-dispatcher.js"])
+        r_hpk = sh(["curl", "-fsSL", f"{gbase}/hermes/package.json", "-o", "/tmp/hermes-package.json"])
+        r_hsv = sh(["curl", "-fsSL", f"{gbase}/hermes/hermes.service", "-o", "/tmp/hermes.service"])
         if r_hjs.returncode == 0:
             sh(["cp", "/tmp/hermes-dispatcher.js", "/opt/apexcore/hermes/dispatcher.js"])
             if r_hpk.returncode == 0:
@@ -138,8 +140,8 @@ def run_deploy(branch: str, cmd_token: str = ""):
         else:
             log.write("hermes/ not in branch — skipping\n")
 
-        r_seed = sh(["curl", "-fsSL", f"{base}/paperclip/seed.sh", "-o", "/tmp/paperclip-seed.sh"])
-        r_areg = sh(["curl", "-fsSL", f"{base}/paperclip/agent-registration.json", "-o", "/tmp/paperclip-agent-reg.json"])
+        r_seed = sh(["curl", "-fsSL", f"{gbase}/paperclip/seed.sh", "-o", "/tmp/paperclip-seed.sh"])
+        r_areg = sh(["curl", "-fsSL", f"{gbase}/paperclip/agent-registration.json", "-o", "/tmp/paperclip-agent-reg.json"])
         if r_seed.returncode == 0:
             sh(["cp", "/tmp/paperclip-seed.sh", "/opt/apexcore/paperclip/seed.sh"])
             sh(["chmod", "+x", "/opt/apexcore/paperclip/seed.sh"])
@@ -150,7 +152,7 @@ def run_deploy(branch: str, cmd_token: str = ""):
             log.write("paperclip/ not in branch — skipping\n")
 
         # --- Paperclip server (install + seed, idempotent) ---
-        r_psetup = sh(["curl", "-fsSL", f"{base}/scripts/setup-paperclip.sh", "-o", "/tmp/setup-paperclip.sh"])
+        r_psetup = sh(["curl", "-fsSL", f"{gbase}/scripts/setup-paperclip.sh", "-o", "/tmp/setup-paperclip.sh"])
         if r_psetup.returncode == 0:
             sh(["chmod", "+x", "/tmp/setup-paperclip.sh"])
             sh(["bash", "/tmp/setup-paperclip.sh", "/var/log/paperclip-setup.log"])
@@ -159,7 +161,7 @@ def run_deploy(branch: str, cmd_token: str = ""):
             log.write("scripts/setup-paperclip.sh not in branch — skipping\n")
 
         # --- Caddy: add paperclip.apexcore.group reverse proxy (idempotent) ---
-        r_pcaddy = sh(["curl", "-fsSL", f"{base}/caddy/paperclip.caddy", "-o", "/tmp/paperclip.caddy"])
+        r_pcaddy = sh(["curl", "-fsSL", f"{gbase}/caddy/paperclip.caddy", "-o", "/tmp/paperclip.caddy"])
         if r_pcaddy.returncode == 0:
             caddyfile = "/opt/openclaw/reverse-proxy/Caddyfile"
             snippet = open("/tmp/paperclip.caddy").read().strip()
