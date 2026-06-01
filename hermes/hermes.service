@@ -1,0 +1,16 @@
+[Unit]
+Description=Hermes Dispatcher — ApexCore Execution Layer
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/node /opt/apexcore/hermes/dispatcher.js
+Restart=always
+RestartSec=5
+WorkingDirectory=/opt/apexcore/hermes
+Environment=NODE_ENV=production
+Environment=HERMES_PORT=7071
+Environment=DISPATCHER_TOKEN=DISPATCHER_TOKEN_PLACEHOLDER
+
+[Install]
+WantedBy=multi-user.target

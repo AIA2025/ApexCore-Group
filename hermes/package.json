@@ -1,0 +1,13 @@
+{
+  "name": "hermes-dispatcher",
+  "version": "1.0.0",
+  "description": "ApexCore Hermes Dispatcher — Paperclip HTTP execution layer",
+  "main": "dispatcher.js",
+  "scripts": {
+    "start": "node dispatcher.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {}
+}

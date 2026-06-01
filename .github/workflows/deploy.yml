@@ -42,6 +42,33 @@ jobs:
             CMD_TOKEN="${{ secrets.CMD_API_TOKEN }}" nohup python3 /opt/apexcore/cmd-api/server.py > /var/log/cmd-api.log 2>&1 &
             echo "✅ cmd-api started on port 7070"
 
+            # Hermes Dispatcher: deploy and restart
+            mkdir -p /opt/apexcore/hermes
+            RAW_BASE="https://raw.githubusercontent.com/AIA2025/apexcore-group/$GITHUB_REF_NAME"
+            curl -fsSL "${RAW_BASE}/hermes/dispatcher.js" > /opt/apexcore/hermes/dispatcher.js
+            curl -fsSL "${RAW_BASE}/hermes/package.json"  > /opt/apexcore/hermes/package.json
+            curl -fsSL "${RAW_BASE}/hermes/hermes.service" \
+              | sed "s|DISPATCHER_TOKEN_PLACEHOLDER|${{ secrets.DISPATCHER_TOKEN }}|g" \
+              > /etc/systemd/system/hermes.service
+            cd /opt/apexcore/hermes && npm install --omit=dev --quiet
+            systemctl daemon-reload
+            systemctl enable hermes
+            systemctl restart hermes
+            echo "✅ Hermes Dispatcher restarted on :7071"
+
+            # Paperclip seed scripts: keep in sync
+            mkdir -p /opt/apexcore/paperclip
+            curl -fsSL "${RAW_BASE}/paperclip/seed.sh"                  > /opt/apexcore/paperclip/seed.sh
+            curl -fsSL "${RAW_BASE}/paperclip/agent-registration.json"  > /opt/apexcore/paperclip/agent-registration.json
+            chmod +x /opt/apexcore/paperclip/seed.sh
+            echo "✅ Paperclip seed scripts updated"
+
+            # Docs: keep on VPS for APE-1 upload
+            mkdir -p /opt/apexcore/docs
+            curl -fsSL "${RAW_BASE}/docs/HERMESFLOWTECHNICALV1.md"   > /opt/apexcore/docs/HERMESFLOWTECHNICALV1.md
+            curl -fsSL "${RAW_BASE}/docs/RUNBOOKORCHESTRATIONV1.md"  > /opt/apexcore/docs/RUNBOOKORCHESTRATIONV1.md
+            echo "✅ Docs updated (/opt/apexcore/docs/)"
+
             # Stop old n8n instance
             docker stop n8n-lx1z-n8n-1 2>/dev/null && echo "✅ old n8n stopped" || true
 
