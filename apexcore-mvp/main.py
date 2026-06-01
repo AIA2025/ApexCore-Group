@@ -11,6 +11,7 @@ from pathlib import Path
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from playwright.async_api import async_playwright
 from reportlab.lib import colors
@@ -22,6 +23,7 @@ from reportlab.pdfgen import canvas
 load_dotenv()
 
 app = FastAPI(title="ApexCore MVP", version="1.0")
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 SCANS: dict = {}
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", "/opt/apexcore-mvp/output"))
@@ -33,6 +35,11 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 @app.get("/health")
 async def health():
     return {"status": "ok", "version": "1.0", "system": "ApexCore MVP"}
+
+
+@app.get("/scans")
+async def list_scans():
+    return SCANS
 
 
 # ─── Scan ─────────────────────────────────────────────────────────────────────
