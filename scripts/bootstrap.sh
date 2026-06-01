@@ -60,6 +60,10 @@ systemctl start cmd-api
 sleep 3
 echo "      ✓"
 
+# ── 3b. Open firewall ports ───────────────────────────
+ufw allow 7070/tcp 2>/dev/null && echo "      ufw: 7070/tcp allowed" || true
+ufw allow 8000/tcp 2>/dev/null && echo "      ufw: 8000/tcp allowed" || true
+
 # ── 4. Health check ──────────────────────────────────
 echo "[4/5] Health check (port 7070)..."
 HEALTH=$(curl -sf http://localhost:7070/health || echo "FAILED")
