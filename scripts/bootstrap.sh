@@ -20,8 +20,9 @@ echo "[1/5] Downloading cmd-api/server.py from GitHub..."
 curl -fsSL "${BASE}/cmd-api/server.py" -o /tmp/cmd-api-server.py
 grep -q 'run_deploy' /tmp/cmd-api-server.py \
   || { echo "ERROR: downloaded file has no run_deploy — branch not pushed yet?"; exit 1; }
-mkdir -p /opt/apexcore/cmd-api
+mkdir -p /opt/apexcore/cmd-api /srv/apexcore/cmd-api
 cp /tmp/cmd-api-server.py "$SRV"
+cp /tmp/cmd-api-server.py /srv/apexcore/cmd-api/server.py
 echo "      ✓"
 
 # ── 2. Systemd service ───────────────────────────────
@@ -32,6 +33,7 @@ Description=ApexCore CMD API
 After=network.target
 
 [Service]
+ExecStartPre=/bin/bash -c 'fuser -k 7070/tcp 2>/dev/null || true; sleep 1'
 ExecStart=/usr/bin/python3 /opt/apexcore/cmd-api/server.py
 Restart=always
 RestartSec=5
@@ -75,7 +77,7 @@ echo ""
 if echo "$RESP" | grep -q '"deploying"'; then
   echo "══════════════════════════════════════════════"
   echo "  Bootstrap complete."
-  echo "  cmd-api is running, /deploy works."
+  echo "  cmd-api is running, /deploy works, self-update active."
   echo "  systemd will auto-restart it on reboot."
   echo ""
   echo "  Live logs:  journalctl -u cmd-api -f"
