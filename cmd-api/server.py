@@ -125,6 +125,18 @@ def run_deploy(branch: str, cmd_token: str = ""):
                                cwd="/opt/apexcore/hermes", stdout=log, stderr=log)
             if r_hsv.returncode == 0:
                 sh(["cp", "/tmp/hermes.service", "/etc/systemd/system/hermes.service"])
+                # Write DISPATCHER_TOKEN drop-in (idempotent, read from env set by install script)
+                d_token = os.getenv("DISPATCHER_TOKEN", "")
+                try:
+                    os.makedirs("/etc/systemd/system/hermes.service.d", exist_ok=True)
+                    dropin_path = "/etc/systemd/system/hermes.service.d/token.conf"
+                    existing = open(dropin_path).read() if os.path.exists(dropin_path) else ""
+                    if d_token and d_token not in existing:
+                        with open(dropin_path, "w") as tf:
+                            tf.write(f'[Service]\nEnvironment="DISPATCHER_TOKEN={d_token}"\n')
+                        log.write("DISPATCHER_TOKEN drop-in written\n")
+                except Exception as te:
+                    log.write(f"DISPATCHER_TOKEN drop-in warning: {te}\n")
                 sh(["systemctl", "daemon-reload"])
                 sh(["systemctl", "enable", "hermes"])
                 sh(["systemctl", "restart", "hermes"])
