@@ -74,6 +74,23 @@ def run_deploy(branch: str, cmd_token: str = ""):
         else:
             log.write("cmd-api/server.py not in branch — skipping self-update\n")
 
+        # --- poller (pull-based deploy agent, idempotent) ---
+        r_poll = sh(["curl", "-fsSL", f"{base}/cmd-api/poller.sh", "-o", "/tmp/poller.sh"])
+        r_psvc = sh(["curl", "-fsSL", f"{base}/cmd-api/apexcore-poller.service", "-o", "/tmp/apexcore-poller.service"])
+        r_ptmr = sh(["curl", "-fsSL", f"{base}/cmd-api/apexcore-poller.timer",   "-o", "/tmp/apexcore-poller.timer"])
+        if r_poll.returncode == 0:
+            sh(["cp", "/tmp/poller.sh", "/opt/apexcore/cmd-api/poller.sh"])
+            sh(["chmod", "+x", "/opt/apexcore/cmd-api/poller.sh"])
+            if r_psvc.returncode == 0:
+                sh(["cp", "/tmp/apexcore-poller.service", "/etc/systemd/system/apexcore-poller.service"])
+            if r_ptmr.returncode == 0:
+                sh(["cp", "/tmp/apexcore-poller.timer",   "/etc/systemd/system/apexcore-poller.timer"])
+                sh(["systemctl", "daemon-reload"])
+                sh(["systemctl", "enable", "--now", "apexcore-poller.timer"])
+            log.write("Poller deployed and timer enabled\n")
+        else:
+            log.write("poller.sh not in branch — skipping\n")
+
         r_main = sh(["curl", "-fsSL", f"{base}/apexcore-mvp/main.py", "-o", "/tmp/scanner-main.py"])
         r_req  = sh(["curl", "-fsSL", f"{base}/apexcore-mvp/requirements.txt", "-o", "/tmp/scanner-req.txt"])
         if r_main.returncode == 0 and r_req.returncode == 0:

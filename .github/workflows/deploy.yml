@@ -42,36 +42,27 @@ jobs:
             sleep 3
             curl -sf http://localhost:7070/health && echo "Bootstrap OK" || echo "Bootstrap FAILED — check /var/log/cmd-api.log"
 
-      - name: Trigger VPS deploy webhook
+      - name: Notify VPS (best-effort webhook + pull-based fallback)
         run: |
           BRANCH="${{ github.ref_name }}"
-          echo "Triggering deploy for branch: $BRANCH"
+          echo "Branch: $BRANCH — commit: ${{ github.sha }}"
 
-          # cmd-api health check first
+          # Best-effort webhook: succeeds if cmd-api is reachable, silently skips if not.
+          # The VPS poller (apexcore-poller.timer) picks up new commits every 2 min regardless.
           CMD_HEALTH=$(curl -sf --connect-timeout 5 http://76.13.138.73:7070/health || echo "unreachable")
-          echo "cmd-api health: $CMD_HEALTH"
+          echo "cmd-api: $CMD_HEALTH"
 
-          HTTP=$(curl -s -o /tmp/resp.json -w "%{http_code}" \
-            -X POST http://76.13.138.73:7070/deploy \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer ${{ secrets.CMD_API_TOKEN }}" \
-            -d "{\"branch\":\"$BRANCH\",\"cmd_token\":\"${{ secrets.CMD_API_TOKEN }}\"}" \
-            --connect-timeout 10 --max-time 15)
-
-          echo "Webhook response ($HTTP): $(cat /tmp/resp.json)"
-
-          if [ "$HTTP" != "202" ]; then
-            echo "::error::Webhook failed (HTTP $HTTP). Is cmd-api running on VPS:7070 with /deploy endpoint?"
-            echo "Bootstrap: bash <(curl -fsSL https://raw.githubusercontent.com/AIA2025/apexcore/${BRANCH}/scripts/bootstrap.sh)"
-            exit 1
+          if [ "$CMD_HEALTH" != "unreachable" ]; then
+            HTTP=$(curl -s -o /tmp/resp.json -w "%{http_code}" \
+              -X POST http://76.13.138.73:7070/deploy \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer ${{ secrets.CMD_API_TOKEN }}" \
+              -d "{\"branch\":\"$BRANCH\",\"cmd_token\":\"${{ secrets.CMD_API_TOKEN }}\"}" \
+              --connect-timeout 10 --max-time 15 || echo "000")
+            echo "Webhook: HTTP $HTTP — $(cat /tmp/resp.json 2>/dev/null)"
+          else
+            echo "::notice::VPS not reachable via webhook — poller will pick up changes within 2 min"
           fi
-
-          echo "Waiting 60s for VPS to redeploy..."
-          sleep 60
-
-          curl -sf http://76.13.138.73:8000/health \
-            && echo "Scanner is healthy" \
-            || echo "Scanner not yet ready (check /var/log/apexcore-mvp.log on VPS)"
 
       - name: Add DNS Records via Porkbun API
         if: ${{ env.PB_KEY != '' }}
