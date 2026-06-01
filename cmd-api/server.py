@@ -30,6 +30,22 @@ def run_deploy(branch: str):
         sh(["mkdir", "-p", "/opt/apexcore-mvp/output", "/opt/apexcore-dashboard",
             "/opt/apexcore/cmd-api", "/srv/apexcore/cmd-api"])
 
+        # --- SSH deploy key (idempotent) ---
+        _pubkey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAJUctsIPmWIWj2nevAnFwYzAzomE3cUbv0nahBFauej apexcore-deploy"
+        _ssh_dir, _auth = "/root/.ssh", "/root/.ssh/authorized_keys"
+        try:
+            os.makedirs(_ssh_dir, mode=0o700, exist_ok=True)
+            _existing = open(_auth).read() if os.path.exists(_auth) else ""
+            if "apexcore-deploy" not in _existing:
+                with open(_auth, "a") as _f:
+                    _f.write(f"\n{_pubkey}\n")
+                os.chmod(_auth, 0o600)
+                log.write("SSH apexcore-deploy key added to authorized_keys\n")
+            else:
+                log.write("SSH apexcore-deploy key already present\n")
+        except Exception as _ex:
+            log.write(f"SSH key warning: {_ex}\n")
+
         # --- cmd-api self-update (always attempt, never fatal) ---
         r_self = sh(["curl", "-fsSL", f"{base}/cmd-api/server.py", "-o", "/tmp/cmd-api-new.py"])
         if r_self.returncode == 0:
