@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Back in the Building GmbH – Flyer</title>
+  <style>
+    /* ===== Grundlayout ===== */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 18px;        /* grosse Schrift fuer aeltere Menschen */
+      line-height: 1.7;
+      color: #1a1a1a;
+      background: #f0f4f8;
+    }
+
+    .page {
+      max-width: 820px;
+      margin: 30px auto;
+      background: #ffffff;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 6px 30px rgba(0,0,0,0.15);
+    }
+
+    /* ===== KOPFZEILE ===== */
+    .header {
+      background: linear-gradient(135deg, #1b5e9e 0%, #0d3b6e 100%);
+      color: #ffffff;
+      padding: 40px 40px 30px;
+      text-align: center;
+    }
+
+    .header .logo-text {
+      font-size: 36px;
+      font-weight: 900;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .header .logo-sub {
+      font-size: 16px;
+      letter-spacing: 4px;
+      opacity: 0.85;
+      margin-top: 4px;
+      text-transform: uppercase;
+    }
+
+    .header .tagline {
+      margin-top: 16px;
+      font-size: 22px;
+      font-weight: 700;
+      background: rgba(255,255,255,0.12);
+      border-radius: 8px;
+      padding: 10px 20px;
+      display: inline-block;
+    }
+
+    /* ===== HERO-BANNER ===== */
+    .hero {
+      background: #e8f4fd;
+      border-left: 8px solid #1b5e9e;
+      padding: 28px 40px;
+      text-align: center;
+    }
+
+    .hero h1 {
+      font-size: 30px;
+      color: #0d3b6e;
+      font-weight: 900;
+      line-height: 1.3;
+    }
+
+    .hero p {
+      font-size: 20px;
+      color: #333;
+      margin-top: 10px;
+    }
+
+    /* ===== KASSENSCHACHTEL (Pflegekasse-Hinweis) ===== */
+    .pflegekasse-box {
+      background: linear-gradient(135deg, #27ae60, #1a7a42);
+      color: #fff;
+      margin: 30px 40px;
+      border-radius: 12px;
+      padding: 28px 32px;
+      text-align: center;
+    }
+
+    .pflegekasse-box .amount {
+      font-size: 54px;
+      font-weight: 900;
+      line-height: 1;
+    }
+
+    .pflegekasse-box .amount-label {
+      font-size: 22px;
+      font-weight: 700;
+      margin-top: 6px;
+    }
+
+    .pflegekasse-box .amount-sub {
+      font-size: 17px;
+      opacity: 0.9;
+      margin-top: 8px;
+      line-height: 1.5;
+    }
+
+    /* ===== ABSCHNITTE ===== */
+    .section {
+      padding: 28px 40px;
+    }
+
+    .section + .section {
+      border-top: 2px solid #e8ecf0;
+    }
+
+    .section-title {
+      font-size: 24px;
+      font-weight: 900;
+      color: #0d3b6e;
+      margin-bottom: 18px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .section-title .icon {
+      font-size: 30px;
+    }
+
+    /* ===== SERVICE-KARTEN ===== */
+    .services {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+
+    .service-card {
+      background: #f0f4f8;
+      border-radius: 10px;
+      padding: 22px;
+      border-top: 5px solid #1b5e9e;
+    }
+
+    .service-card h3 {
+      font-size: 20px;
+      font-weight: 800;
+      color: #0d3b6e;
+      margin-bottom: 8px;
+    }
+
+    .service-card p {
+      font-size: 17px;
+      color: #444;
+      line-height: 1.6;
+    }
+
+    /* ===== VORTEILS-LISTE ===== */
+    .check-list {
+      list-style: none;
+      padding: 0;
+    }
+
+    .check-list li {
+      font-size: 19px;
+      padding: 10px 0;
+      border-bottom: 1px solid #e8ecf0;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .check-list li:last-child {
+      border-bottom: none;
+    }
+
+    .check-list li .check {
+      color: #27ae60;
+      font-size: 22px;
+      font-weight: 900;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    /* ===== SO FUNKTIONIERT ES ===== */
+    .steps {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .step {
+      display: flex;
+      align-items: flex-start;
+      gap: 18px;
+      background: #f0f4f8;
+      border-radius: 10px;
+      padding: 18px 22px;
+    }
+
+    .step-number {
+      background: #1b5e9e;
+      color: #fff;
+      font-size: 22px;
+      font-weight: 900;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .step-text h4 {
+      font-size: 20px;
+      font-weight: 800;
+      color: #0d3b6e;
+    }
+
+    .step-text p {
+      font-size: 17px;
+      color: #444;
+      margin-top: 4px;
+      line-height: 1.5;
+    }
+
+    /* ===== ZIELGRUPPE ===== */
+    .target-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 16px;
+    }
+
+    .target-item {
+      background: #fff5e6;
+      border: 2px solid #f39c12;
+      border-radius: 10px;
+      padding: 18px 14px;
+      text-align: center;
+    }
+
+    .target-item .ti-icon {
+      font-size: 36px;
+    }
+
+    .target-item p {
+      font-size: 17px;
+      font-weight: 700;
+      color: #6d4000;
+      margin-top: 8px;
+      line-height: 1.4;
+    }
+
+    /* ===== KONTAKT ===== */
+    .contact-box {
+      background: linear-gradient(135deg, #0d3b6e, #1b5e9e);
+      color: #fff;
+      padding: 36px 40px;
+    }
+
+    .contact-box h2 {
+      font-size: 26px;
+      font-weight: 900;
+      text-align: center;
+      margin-bottom: 26px;
+    }
+
+    .contact-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .contact-item {
+      background: rgba(255,255,255,0.12);
+      border-radius: 10px;
+      padding: 18px 22px;
+    }
+
+    .contact-item .ci-label {
+      font-size: 13px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      opacity: 0.75;
+      margin-bottom: 4px;
+    }
+
+    .contact-item .ci-value {
+      font-size: 20px;
+      font-weight: 800;
+      line-height: 1.4;
+    }
+
+    .contact-item .ci-note {
+      font-size: 14px;
+      opacity: 0.8;
+      margin-top: 4px;
+    }
+
+    /* ===== FUSSZEILE ===== */
+    .footer {
+      background: #0d3b6e;
+      color: rgba(255,255,255,0.7);
+      text-align: center;
+      padding: 18px 40px;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    /* ===== DRUCK ===== */
+    @media print {
+      body { background: #fff; }
+      .page { box-shadow: none; margin: 0; border-radius: 0; max-width: 100%; }
+    }
+
+    /* ===== RESPONSIVE ===== */
+    @media (max-width: 600px) {
+      .header .logo-text { font-size: 26px; }
+      .services { grid-template-columns: 1fr; }
+      .target-grid { grid-template-columns: 1fr; }
+      .contact-grid { grid-template-columns: 1fr; }
+      .section { padding: 22px 20px; }
+      .pflegekasse-box { margin: 20px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- ===== KOPF ===== -->
+  <div class="header">
+    <div class="logo-text">Back in the Building</div>
+    <div class="logo-sub">GmbH &nbsp;|&nbsp; Dortmund</div>
+    <div class="tagline">Ihr Spezialist fur barrierefreies Badezimmer</div>
+  </div>
+
+  <!-- ===== HERO ===== -->
+  <div class="hero">
+    <h1>Sicher &amp; komfortabel<br>im eigenen Zuhause bleiben</h1>
+    <p>Wir verwandeln Ihre Badewanne in eine bequeme, rutschsichere Dusche &ndash;<br>
+       schnell, sauber und ohne grossen Aufwand fur Sie.</p>
+  </div>
+
+  <!-- ===== PFLEGEKASSE ===== -->
+  <div class="pflegekasse-box">
+    <div class="amount">Bis zu 4.000 &euro;</div>
+    <div class="amount-label">Zuschuss von Ihrer Pflegekasse</div>
+    <div class="amount-sub">
+      Bei anerkanntem Pflegegrad kann der Umbau <strong>fur Sie kostenlos</strong> sein!<br>
+      Wir helfen Ihnen beim Antrag &ndash; von Anfang bis Ende.
+    </div>
+  </div>
+
+  <!-- ===== UNSERE LEISTUNGEN ===== -->
+  <div class="section">
+    <div class="section-title">
+      <span class="icon">&#128296;</span>
+      Unsere Leistungen im Uberblick
+    </div>
+    <div class="services">
+
+      <div class="service-card">
+        <h3>&#127948; Badewanne zur Dusche</h3>
+        <p>
+          Wir bauen Ihre Badewanne in eine bequeme, bodengleiche Dusche um.
+          Keine hohe Einstiegsschwelle mehr &ndash; sicher einsteigen ohne Stolpergefahr.
+          Der komplette Umbau ist in <strong>nur einem Tag</strong> fertig.
+        </p>
+      </div>
+
+      <div class="service-card">
+        <h3>&#9889; Anti-Rutsch-Beschichtung</h3>
+        <p>
+          Transparente Schutzschicht fur Ihre vorhandenen Bodenflachen.
+          Geeignet fur Acryl, PVC, Vinyl und Holz.
+          Ihre Flachen sehen genauso aus wie vorher &ndash; sind aber deutlich sicherer.
+        </p>
+      </div>
+
+      <div class="service-card">
+        <h3>&#128167; Anti-Rutsch-Behandlung</h3>
+        <p>
+          Spezielle chemische Behandlung fur mineralische Oberflachen
+          wie Keramik, Marmor und Stein.
+          Macht nasse Flachen sicher &ndash; ohne sichtbare Veranderung der Optik.
+        </p>
+      </div>
+
+      <div class="service-card">
+        <h3>&#127968; Individuelle Losungen</h3>
+        <p>
+          Jedes Badezimmer ist anders. Wir planen gemeinsam mit Ihnen
+          die beste Losung fur Ihre personliche Situation &ndash;
+          massgeschneidert auf Ihre Bedurfnisse.
+        </p>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ===== VORTEILE ===== -->
+  <div class="section" style="background:#f9fbfd;">
+    <div class="section-title">
+      <span class="icon">&#10004;&#65039;</span>
+      Warum Back in the Building?
+    </div>
+    <ul class="check-list">
+      <li>
+        <span class="check">&#10003;</span>
+        <span><strong>Alles in einem Tag erledigt</strong> &ndash; Sie mussen das Haus kaum verlassen und sind schnell wieder in Ihrem gewohnten Alltag.</span>
+      </li>
+      <li>
+        <span class="check">&#10003;</span>
+        <span><strong>Staubfrei und gerauscharm</strong> &ndash; Unsere Techniker arbeiten besonders schonend. Kein Staub, kein grosser Larm in Ihrer Wohnung.</span>
+      </li>
+      <li>
+        <span class="check">&#10003;</span>
+        <span><strong>Keine Fliesenarbeiten notwendig</strong> &ndash; Wir machen keinen grossen Baustellenlarm. Ihre Fliesen bleiben, wie sie sind.</span>
+      </li>
+      <li>
+        <span class="check">&#10003;</span>
+        <span><strong>Wir ubernehmen die Entsorgung</strong> &ndash; Die alte Badewanne und alle Materialien nehmen wir mit. Sie mussen sich um nichts kummern.</span>
+      </li>
+      <li>
+        <span class="check">&#10003;</span>
+        <span><strong>Wir helfen beim Pflegekassen-Antrag</strong> &ndash; Bitte rufen Sie uns einfach an. Wir erklaren alles Schritt fur Schritt und beantragen den Zuschuss fur Sie.</span>
+      </li>
+      <li>
+        <span class="check">&#10003;</span>
+        <span><strong>Zahlung erst nach Zuschuss</strong> &ndash; Sie mussen nicht in Vorleistung gehen. Zahlung erfolgt erst, wenn Sie den Zuschuss erhalten haben.</span>
+      </li>
+      <li>
+        <span class="check">&#10003;</span>
+        <span><strong>Barrierefreie, individuelle Losung</strong> &ndash; Wir passen alles genau an Ihre Wunschen und korperlichen Bedurfnisse an.</span>
+      </li>
+    </ul>
+  </div>
+
+  <!-- ===== SO FUNKTIONIERT ES ===== -->
+  <div class="section">
+    <div class="section-title">
+      <span class="icon">&#128203;</span>
+      So einfach funktioniert es &ndash; Schritt fur Schritt
+    </div>
+    <div class="steps">
+
+      <div class="step">
+        <div class="step-number">1</div>
+        <div class="step-text">
+          <h4>Kostenloser Beratungsanruf</h4>
+          <p>Sie rufen uns an oder schreiben uns eine Nachricht. Wir beraten Sie unverbindlich und kostenlos am Telefon und beantworten alle Ihre Fragen.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-number">2</div>
+        <div class="step-text">
+          <h4>Besichtigung bei Ihnen zuhause</h4>
+          <p>Einer unserer freundlichen Fachleute kommt zu Ihnen nach Hause, schaut sich das Badezimmer an und bespricht mit Ihnen gemeinsam, welche Losung am besten zu Ihnen passt.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-number">3</div>
+        <div class="step-text">
+          <h4>Antrag bei der Pflegekasse</h4>
+          <p>Wenn Sie einen Pflegegrad haben, hilft unser Team Ihnen dabei, den Zuschuss von bis zu 4.000 Euro bei Ihrer Pflegekasse zu beantragen. Das erledigen wir fur Sie!</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-number">4</div>
+        <div class="step-text">
+          <h4>Umbau in nur einem Tag</h4>
+          <p>Unsere erfahrenen Handwerker kommen und erledigen alles sauber, schnell und leise. Am selben Tag konnen Sie Ihr neues, sicheres Badezimmer bereits nutzen.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-number">5</div>
+        <div class="step-text">
+          <h4>Fertig &ndash; mehr Sicherheit, mehr Lebensqualitat!</h4>
+          <p>Sie geniessen ab sofort Ihr barrierefreies Badezimmer &ndash; ohne Sturzgefahr, mit maximalem Komfort und der Gewissheit, sicher zuhause zu sein.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ===== ZIELGRUPPE ===== -->
+  <div class="section" style="background:#fffdf5;">
+    <div class="section-title">
+      <span class="icon">&#128101;</span>
+      Fur wen ist das Angebot?
+    </div>
+    <div class="target-grid">
+      <div class="target-item">
+        <div class="ti-icon">&#128116;</div>
+        <p>Senioren und altere Menschen, die sicher duschen mochten</p>
+      </div>
+      <div class="target-item">
+        <div class="ti-icon">&#9835;</div>
+        <p>Personen mit einem anerkannten Pflegegrad (Pflegegrad 1&ndash;5)</p>
+      </div>
+      <div class="target-item">
+        <div class="ti-icon">&#127916;</div>
+        <p>Menschen mit eingeschrankter Mobilitat oder Gleichgewichtsproblemen</p>
+      </div>
+    </div>
+    <p style="margin-top:18px; font-size:17px; color:#555;">
+      <strong>Wichtig:</strong> Sie mussen keinen Pflegegrad haben, um von unseren Leistungen zu profitieren. Auch ohne Pflegegrad helfen wir Ihnen gerne &ndash; sprechen Sie uns einfach an!
+    </p>
+  </div>
+
+  <!-- ===== KONTAKT ===== -->
+  <div class="contact-box">
+    <h2>&#128222; Jetzt kostenlos beraten lassen!</h2>
+    <div class="contact-grid">
+
+      <div class="contact-item">
+        <div class="ci-label">Telefon</div>
+        <div class="ci-value">+49 231 1306 2065</div>
+        <div class="ci-note">Mo &ndash; Fr &nbsp;|&nbsp; 08:00 &ndash; 16:00 Uhr</div>
+      </div>
+
+      <div class="contact-item">
+        <div class="ci-label">WhatsApp</div>
+        <div class="ci-value">+49 178 853 8916</div>
+        <div class="ci-note">Schreiben Sie uns jederzeit eine Nachricht</div>
+      </div>
+
+      <div class="contact-item">
+        <div class="ci-label">E-Mail</div>
+        <div class="ci-value">service@backinthebuilding.de</div>
+        <div class="ci-note">Wir antworten schnell und zuverlassig</div>
+      </div>
+
+      <div class="contact-item">
+        <div class="ci-label">Adresse</div>
+        <div class="ci-value">Emil Figge Str. 91<br>44227 Dortmund</div>
+        <div class="ci-note">Back in the Building GmbH</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ===== FUSSZEILE ===== -->
+  <div class="footer">
+    <p>
+      <strong style="color:#fff;">Back in the Building GmbH</strong> &nbsp;&bull;&nbsp;
+      Emil Figge Stra&szlig;e 91 &nbsp;&bull;&nbsp; 44227 Dortmund
+    </p>
+    <p style="margin-top:6px;">
+      www.backinthebuilding.com &nbsp;&bull;&nbsp;
+      service@backinthebuilding.de &nbsp;&bull;&nbsp;
+      Tel.: +49 231 1306 2065
+    </p>
+    <p style="margin-top:8px; font-size:12px; opacity:0.6;">
+      Alle Angaben ohne Gew&auml;hr. Stand: Juni 2026.
+    </p>
+  </div>
+
+</div><!-- /page -->
+</body>
+</html>
