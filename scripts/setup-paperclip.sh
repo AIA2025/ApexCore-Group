@@ -65,6 +65,24 @@ for i in {1..20}; do
   sleep 1
 done
 
+# ── DISPATCHER_TOKEN (generate once, persist to /etc/apexcore/hermes.env) ──────
+APEXCORE_ENV="/etc/apexcore/hermes.env"
+mkdir -p /etc/apexcore
+if [[ ! -f "$APEXCORE_ENV" ]] || ! grep -q "^DISPATCHER_TOKEN=" "$APEXCORE_ENV" 2>/dev/null; then
+  DISPATCHER_TOKEN=$(openssl rand -hex 32)
+  echo "DISPATCHER_TOKEN=${DISPATCHER_TOKEN}" > "$APEXCORE_ENV"
+  chmod 600 "$APEXCORE_ENV"
+  echo "Generated new DISPATCHER_TOKEN → ${APEXCORE_ENV}"
+else
+  DISPATCHER_TOKEN=$(grep "^DISPATCHER_TOKEN=" "$APEXCORE_ENV" | cut -d= -f2-)
+  echo "Using existing DISPATCHER_TOKEN from ${APEXCORE_ENV}"
+fi
+
+# Reload Hermes if running so it picks up the token
+if systemctl is-active --quiet hermes 2>/dev/null; then
+  systemctl restart hermes && echo "Hermes restarted with new token env" || echo "Hermes restart failed (non-fatal)"
+fi
+
 # Seed only once (check if company exists)
 EXISTING=$(curl -sf http://127.0.0.1:3100/api/companies | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null || echo "0")
 if [[ "$EXISTING" == "0" ]]; then
@@ -83,7 +101,7 @@ if [[ "$EXISTING" == "0" ]]; then
 
   curl -sf -X POST "$BASE/companies/$CID/agents" \
     -H "Content-Type: application/json" \
-    -d "{\"name\":\"Hermes Dispatcher\",\"description\":\"HTTP execution layer — routes dispatch calls to Claude Code, VPS workloads and tools.\",\"adapterType\":\"http\",\"adapterConfig\":{\"url\":\"http://${HERMES_HOST}:${HERMES_PORT}/dispatch\",\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer \${DISPATCHER_TOKEN}\"},\"payloadTemplate\":{\"source\":\"paperclip\",\"kind\":\"dispatch\"},\"timeoutSec\":30},\"runtimeConfig\":{\"heartbeat\":{\"enabled\":true,\"intervalSec\":60}},\"metadata\":{\"healthUrl\":\"http://${HERMES_HOST}:${HERMES_PORT}/health\"}}" \
+    -d "{\"name\":\"Hermes Dispatcher\",\"description\":\"HTTP execution layer — routes dispatch calls to Claude Code, VPS workloads and tools.\",\"adapterType\":\"http\",\"adapterConfig\":{\"url\":\"http://${HERMES_HOST}:${HERMES_PORT}/dispatch\",\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer ${DISPATCHER_TOKEN}\"},\"payloadTemplate\":{\"source\":\"paperclip\",\"kind\":\"dispatch\"},\"timeoutSec\":30},\"runtimeConfig\":{\"heartbeat\":{\"enabled\":true,\"intervalSec\":60}},\"metadata\":{\"healthUrl\":\"http://${HERMES_HOST}:${HERMES_PORT}/health\"}}" \
     | jq_get "['id']" | xargs echo "Agent Hermes:"
 
   mk_proj() { curl -sf -X POST "$BASE/companies/$CID/projects" -H "Content-Type: application/json" -d "{\"name\":\"$1\",\"description\":\"$2\"}" | jq_get "['id']"; }
