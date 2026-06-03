@@ -98,15 +98,44 @@ def run_deploy(branch: str, cmd_token: str = ""):
             if not os.path.isdir(cache) or not os.listdir(cache):
                 sh(["python3", "-m", "playwright", "install", "chromium"])
                 sh(["python3", "-m", "playwright", "install-deps", "chromium"])
-            subprocess.run(["pkill", "-f", "uvicorn main:app"], capture_output=True)
-            time.sleep(2)
-            subprocess.Popen(
-                ["python3", "-m", "uvicorn", "main:app",
-                 "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"],
-                cwd="/opt/apexcore-mvp",
-                stdout=open("/var/log/apexcore-mvp.log", "a"),
-                stderr=subprocess.STDOUT,
-            )
+
+            # --- systemd service (install / update if in branch) ---
+            r_svc = sh(["curl", "-fsSL", f"{base}/apexcore-mvp/apexcore-mvp.service",
+                        "-o", "/tmp/apexcore-mvp.service"])
+            use_systemd = False
+            if r_svc.returncode == 0:
+                sh(["cp", "/tmp/apexcore-mvp.service", "/etc/systemd/system/apexcore-mvp.service"])
+                sh(["systemctl", "daemon-reload"])
+                sh(["systemctl", "enable", "apexcore-mvp"])
+                subprocess.run(["pkill", "-f", "uvicorn main:app"], capture_output=True)
+                time.sleep(2)
+                sh(["systemctl", "restart", "apexcore-mvp"])
+                use_systemd = True
+                log.write("Scanner installed/restarted via systemd\n")
+            else:
+                subprocess.run(["pkill", "-f", "uvicorn main:app"], capture_output=True)
+                time.sleep(2)
+                subprocess.Popen(
+                    ["python3", "-m", "uvicorn", "main:app",
+                     "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"],
+                    cwd="/opt/apexcore-mvp",
+                    stdout=open("/var/log/apexcore-mvp.log", "a"),
+                    stderr=subprocess.STDOUT,
+                )
+                log.write("Scanner started via Popen (no service file in branch)\n")
+
+            # --- 90-day output cleanup cron (idempotent) ---
+            cron_line = "0 3 * * * find /opt/apexcore-mvp/output -mtime +90 -type f -delete\n"
+            cron_path = "/etc/cron.d/apexcore-cleanup"
+            existing_cron = open(cron_path).read() if os.path.exists(cron_path) else ""
+            if cron_line.strip() not in existing_cron:
+                with open(cron_path, "w") as cf:
+                    cf.write(cron_line)
+                os.chmod(cron_path, 0o644)
+                log.write("90-day cleanup cron installed\n")
+            else:
+                log.write("Cleanup cron already present\n")
+
             time.sleep(5)
             result = subprocess.run(["curl", "-sf", "http://localhost:8000/health"],
                                     capture_output=True, text=True)
