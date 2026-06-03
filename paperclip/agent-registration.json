@@ -1,0 +1,50 @@
+{
+  "_comment": "Agent registration templates for Paperclip. Use POST /api/companies/:companyId/agents.",
+  "agents": [
+    {
+      "name": "Hermes Dispatcher",
+      "description": "HTTP execution layer. Routes Paperclip dispatch calls to Claude Code, VPS workloads, and tools.",
+      "adapterType": "http",
+      "adapterConfig": {
+        "url": "http://localhost:7071/dispatch",
+        "method": "POST",
+        "headers": { "Authorization": "Bearer ${DISPATCHER_TOKEN}" },
+        "payloadTemplate": { "source": "paperclip", "kind": "dispatch" },
+        "timeoutSec": 30
+      },
+      "runtimeConfig": {
+        "heartbeat": { "enabled": true, "intervalSec": 60 }
+      },
+      "metadata": {
+        "healthUrl": "http://localhost:7071/health",
+        "dispatchUrl": "http://localhost:7071/dispatch"
+      }
+    },
+    {
+      "name": "Claude Code",
+      "description": "Claude Code CLI agent for code generation, review, and task execution.",
+      "adapterType": "claude_local",
+      "adapterConfig": {},
+      "runtimeConfig": {
+        "heartbeat": { "enabled": false }
+      },
+      "metadata": {}
+    },
+    {
+      "name": "Perplexity Research",
+      "description": "Perplexity AI for web research and fact-checking.",
+      "adapterType": "http",
+      "adapterConfig": {
+        "url": "https://api.perplexity.ai/chat/completions",
+        "method": "POST",
+        "headers": { "Authorization": "Bearer ${PERPLEXITY_API_KEY}" },
+        "payloadTemplate": { "model": "sonar", "source": "paperclip" },
+        "timeoutSec": 60
+      },
+      "runtimeConfig": {
+        "heartbeat": { "enabled": false }
+      },
+      "metadata": {}
+    }
+  ]
+}

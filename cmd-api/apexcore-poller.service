@@ -1,0 +1,8 @@
+[Unit]
+Description=ApexCore Deploy Poller
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/apexcore/cmd-api/poller.sh
+EnvironmentFile=-/etc/apexcore/poller.env
