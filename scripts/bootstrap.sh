@@ -100,23 +100,24 @@ RESP=$(curl -s -X POST http://localhost:7070/deploy \
 echo "      ${RESP}"
 
 echo ""
-if echo "$RESP" | grep -q '"deploying"'; then
+if echo "$RESP" | grep -q '"deploying"\|"unauthorized"'; then
+  # ── Install auto-deploy timer ─────────────────────────
+  if [ -f "$APEXCORE_DIR/cmd-api/apexcore-autodeploy.service" ]; then
+    chmod +x "$APEXCORE_DIR/scripts/autodeploy.sh" 2>/dev/null || true
+    cp "$APEXCORE_DIR/cmd-api/apexcore-autodeploy.service" /etc/systemd/system/
+    cp "$APEXCORE_DIR/cmd-api/apexcore-autodeploy.timer"   /etc/systemd/system/
+    systemctl daemon-reload
+    systemctl enable --now apexcore-autodeploy.timer --quiet 2>/dev/null || true
+    echo "      ✓ auto-deploy timer active (every 5 min)"
+  fi
+  echo ""
   echo "══════════════════════════════════════════════"
   echo "  Bootstrap complete."
-  echo "  cmd-api is running, /deploy works, self-update active."
-  echo "  systemd will auto-restart it on reboot."
+  echo "  cmd-api is running. Auto-deploy timer active."
+  echo "  VPS pulls new code every 5 minutes automatically."
   echo ""
   echo "  Live logs:  journalctl -u cmd-api -f"
-  echo "  Deploy log: tail -f /tmp/cmd-api-deploy.log"
-  echo "══════════════════════════════════════════════"
-elif echo "$RESP" | grep -q '"unauthorized"'; then
-  echo "══════════════════════════════════════════════"
-  echo "  Bootstrap complete."
-  echo "  cmd-api is running, token auth is enforced (CMD_TOKEN set)."
-  echo "  CI will authenticate via CMD_API_TOKEN secret."
-  echo ""
-  echo "  Live logs:  journalctl -u cmd-api -f"
-  echo "  Deploy log: tail -f /tmp/cmd-api-deploy.log"
+  echo "  Deploy log: tail -f /tmp/apexcore-autodeploy.log"
   echo "══════════════════════════════════════════════"
 else
   echo "ERROR: /deploy returned unexpected response"

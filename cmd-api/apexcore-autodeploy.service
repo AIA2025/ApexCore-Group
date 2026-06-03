@@ -1,0 +1,9 @@
+[Unit]
+Description=ApexCore auto-deploy (git pull + redeploy)
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/srv/apexcore/scripts/autodeploy.sh
+StandardOutput=append:/tmp/apexcore-autodeploy.log
+StandardError=append:/tmp/apexcore-autodeploy.log
