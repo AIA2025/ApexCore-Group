@@ -15,7 +15,7 @@ PORT = 7070
 
 def run_deploy(branch: str, cmd_token: str = ""):
     """Pull latest code from GitHub, self-update cmd-api, restart scanner."""
-    log = open("/tmp/cmd-api-deploy.log", "a")
+    log = open("/var/log/cmd-api-deploy.log", "a")
     cmd_api_updated = False
 
     def sh(cmd, **kw):
@@ -74,13 +74,17 @@ def run_deploy(branch: str, cmd_token: str = ""):
         else:
             log.write("cmd-api/server.py not in branch — skipping self-update\n")
 
+        # --- scanner (optional — skip if not in branch) ---
         r_main = sh(["curl", "-fsSL", f"{base}/apexcore-mvp/main.py", "-o", "/tmp/scanner-main.py"])
         r_req  = sh(["curl", "-fsSL", f"{base}/apexcore-mvp/requirements.txt", "-o", "/tmp/scanner-req.txt"])
+
         if r_main.returncode == 0 and r_req.returncode == 0:
             sh(["cp", "/tmp/scanner-main.py", "/opt/apexcore-mvp/main.py"])
             sh(["cp", "/tmp/scanner-req.txt", "/opt/apexcore-mvp/requirements.txt"])
-            sh(["pip3", "install", "-r", "/opt/apexcore-mvp/requirements.txt", "--break-system-packages", "-q"])
-            r_dash = sh(["curl", "-fsSL", f"{base}/dashboard/index.html", "-o", "/opt/apexcore-dashboard/index.html"])
+            sh(["pip3", "install", "-r", "/opt/apexcore-mvp/requirements.txt",
+                "--break-system-packages", "-q"])
+            r_dash = sh(["curl", "-fsSL", f"{base}/dashboard/index.html",
+                         "-o", "/opt/apexcore-dashboard/index.html"])
             if r_dash.returncode != 0:
                 log.write("dashboard/index.html not in branch, skipping\n")
             env_path = "/opt/apexcore-mvp/.env"
@@ -94,24 +98,61 @@ def run_deploy(branch: str, cmd_token: str = ""):
             if not os.path.isdir(cache) or not os.listdir(cache):
                 sh(["python3", "-m", "playwright", "install", "chromium"])
                 sh(["python3", "-m", "playwright", "install-deps", "chromium"])
-            subprocess.run(["pkill", "-f", "uvicorn main:app"], capture_output=True)
-            time.sleep(2)
-            subprocess.Popen(["python3", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"],
-                             cwd="/opt/apexcore-mvp", stdout=open("/var/log/apexcore-mvp.log", "a"), stderr=subprocess.STDOUT)
+
+            # --- systemd service (install / update if in branch) ---
+            r_svc = sh(["curl", "-fsSL", f"{base}/apexcore-mvp/apexcore-mvp.service",
+                        "-o", "/tmp/apexcore-mvp.service"])
+            use_systemd = False
+            if r_svc.returncode == 0:
+                sh(["cp", "/tmp/apexcore-mvp.service", "/etc/systemd/system/apexcore-mvp.service"])
+                sh(["systemctl", "daemon-reload"])
+                sh(["systemctl", "enable", "apexcore-mvp"])
+                subprocess.run(["pkill", "-f", "uvicorn main:app"], capture_output=True)
+                time.sleep(2)
+                sh(["systemctl", "restart", "apexcore-mvp"])
+                use_systemd = True
+                log.write("Scanner installed/restarted via systemd\n")
+            else:
+                subprocess.run(["pkill", "-f", "uvicorn main:app"], capture_output=True)
+                time.sleep(2)
+                subprocess.Popen(
+                    ["python3", "-m", "uvicorn", "main:app",
+                     "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"],
+                    cwd="/opt/apexcore-mvp",
+                    stdout=open("/var/log/apexcore-mvp.log", "a"),
+                    stderr=subprocess.STDOUT,
+                )
+                log.write("Scanner started via Popen (no service file in branch)\n")
+
+            # --- 90-day output cleanup cron (idempotent) ---
+            cron_line = "0 3 * * * find /opt/apexcore-mvp/output -mtime +90 -type f -delete\n"
+            cron_path = "/etc/cron.d/apexcore-cleanup"
+            existing_cron = open(cron_path).read() if os.path.exists(cron_path) else ""
+            if cron_line.strip() not in existing_cron:
+                with open(cron_path, "w") as cf:
+                    cf.write(cron_line)
+                os.chmod(cron_path, 0o644)
+                log.write("90-day cleanup cron installed\n")
+            else:
+                log.write("Cleanup cron already present\n")
+
             time.sleep(5)
-            result = subprocess.run(["curl", "-sf", "http://localhost:8000/health"], capture_output=True, text=True)
+            result = subprocess.run(["curl", "-sf", "http://localhost:8000/health"],
+                                    capture_output=True, text=True)
             log.write(f"Scanner {'healthy: ' + result.stdout if result.returncode == 0 else 'health check FAILED'}\n")
         else:
             log.write("apexcore-mvp/ not in branch — scanner not updated\n")
 
+        # --- Hermes Dispatcher (optional) ---
         r_hjs = sh(["curl", "-fsSL", f"{base}/hermes/dispatcher.js", "-o", "/tmp/hermes-dispatcher.js"])
-        r_hpk = sh(["curl", "-fsSL", f"{base}/hermes/package.json", "-o", "/tmp/hermes-package.json"])
+        r_hpk = sh(["curl", "-fsSL", f"{base}/hermes/package.json",  "-o", "/tmp/hermes-package.json"])
         r_hsv = sh(["curl", "-fsSL", f"{base}/hermes/hermes.service", "-o", "/tmp/hermes.service"])
         if r_hjs.returncode == 0:
             sh(["cp", "/tmp/hermes-dispatcher.js", "/opt/apexcore/hermes/dispatcher.js"])
             if r_hpk.returncode == 0:
                 sh(["cp", "/tmp/hermes-package.json", "/opt/apexcore/hermes/package.json"])
-                subprocess.run(["npm", "install", "--omit=dev", "--quiet"], cwd="/opt/apexcore/hermes", stdout=log, stderr=log)
+                subprocess.run(["npm", "install", "--omit=dev", "--quiet"],
+                               cwd="/opt/apexcore/hermes", stdout=log, stderr=log)
             if r_hsv.returncode == 0:
                 sh(["cp", "/tmp/hermes.service", "/etc/systemd/system/hermes.service"])
                 sh(["systemctl", "daemon-reload"])
@@ -121,6 +162,7 @@ def run_deploy(branch: str, cmd_token: str = ""):
         else:
             log.write("hermes/ not in branch — skipping\n")
 
+        # --- Paperclip seeds (optional) ---
         r_seed = sh(["curl", "-fsSL", f"{base}/paperclip/seed.sh", "-o", "/tmp/paperclip-seed.sh"])
         r_areg = sh(["curl", "-fsSL", f"{base}/paperclip/agent-registration.json", "-o", "/tmp/paperclip-agent-reg.json"])
         if r_seed.returncode == 0:
@@ -134,6 +176,7 @@ def run_deploy(branch: str, cmd_token: str = ""):
 
         log.write("=== Deploy finished ===\n")
         log.flush()
+
     except Exception as e:
         log.write(f"Deploy error: {e}\n")
     finally:
