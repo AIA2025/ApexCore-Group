@@ -1,0 +1,17 @@
+[Unit]
+Description=ApexCore MVP Scanner — EU AI Act Art. 50 Enforcement
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/apexcore-mvp
+EnvironmentFile=/opt/apexcore-mvp/.env
+ExecStart=/usr/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --log-level info
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/log/apexcore-mvp.log
+StandardError=append:/var/log/apexcore-mvp.log
+
+[Install]
+WantedBy=multi-user.target
