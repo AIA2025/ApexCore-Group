@@ -1,10 +1,10 @@
 [Unit]
-Description=ApexCore Deploy Poller — every 2 minutes
+Description=ApexCore Deploy Poller — every 30 minutes
 
 [Timer]
-OnBootSec=30s
-OnUnitActiveSec=2min
-AccuracySec=10s
+OnBootSec=60s
+OnUnitActiveSec=30min
+AccuracySec=60s
 
 [Install]
 WantedBy=timers.target

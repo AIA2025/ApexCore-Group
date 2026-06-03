@@ -10,7 +10,7 @@ RestartSec=5
 WorkingDirectory=/opt/apexcore/hermes
 Environment=NODE_ENV=production
 Environment=HERMES_PORT=7071
-Environment=DISPATCHER_TOKEN=
+EnvironmentFile=-/etc/apexcore/hermes.env
 
 [Install]
 WantedBy=multi-user.target

@@ -7,7 +7,7 @@ PAPERCLIP_PORT=3100
 HERMES_PORT=7071
 PAPERCLIP_DATA_DIR=/opt/paperclip/data
 HERMES_DIR=/opt/apexcore/hermes
-REPO_RAW="https://raw.githubusercontent.com/AIA2025/apexcore-group/main"
+REPO_RAW="https://raw.githubusercontent.com/AIA2025/ApexCore-Group/main"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 info()    { echo -e "${GREEN}[INFO]${NC} $*"; }
@@ -85,15 +85,20 @@ curl -fsSL "${REPO_RAW}/hermes/hermes.service"   > /etc/systemd/system/hermes.se
 
 cd "$HERMES_DIR" && npm install --omit=dev
 
+APEXCORE_ENV="/etc/apexcore/hermes.env"
+mkdir -p /etc/apexcore
 if [[ -z "${DISPATCHER_TOKEN:-}" ]]; then
-  warn "DISPATCHER_TOKEN not set — generating a random token."
-  DISPATCHER_TOKEN=$(openssl rand -hex 32)
-  echo "DISPATCHER_TOKEN=${DISPATCHER_TOKEN}" >> /etc/environment
-  warn "Token written to /etc/environment. Export it in your shell and store it in Paperclip as a Company Secret."
+  if [[ -f "$APEXCORE_ENV" ]] && grep -q "^DISPATCHER_TOKEN=" "$APEXCORE_ENV" 2>/dev/null; then
+    DISPATCHER_TOKEN=$(grep "^DISPATCHER_TOKEN=" "$APEXCORE_ENV" | cut -d= -f2-)
+    info "Using existing DISPATCHER_TOKEN from ${APEXCORE_ENV}"
+  else
+    warn "DISPATCHER_TOKEN not set — generating a random token."
+    DISPATCHER_TOKEN=$(openssl rand -hex 32)
+  fi
 fi
-
-# Inject token into service env
-sed -i "s|DISPATCHER_TOKEN_PLACEHOLDER|${DISPATCHER_TOKEN}|g" /etc/systemd/system/hermes.service
+echo "DISPATCHER_TOKEN=${DISPATCHER_TOKEN}" > "$APEXCORE_ENV"
+chmod 600 "$APEXCORE_ENV"
+info "DISPATCHER_TOKEN saved to ${APEXCORE_ENV}"
 
 systemctl daemon-reload
 systemctl enable hermes
