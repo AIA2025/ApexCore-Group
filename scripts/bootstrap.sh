@@ -3,16 +3,37 @@
 # Usage: bash <(curl -fsSL "https://raw.githubusercontent.com/AIA2025/apexcore/claude/serene-gates-KHDWp/scripts/bootstrap.sh")
 set -euo pipefail
 
-BRANCH="${1:-claude/serene-gates-KHDWp}"
+BRANCH="${1:-${APEXCORE_BRANCH:-main}}"
 BASE="https://raw.githubusercontent.com/AIA2025/apexcore/${BRANCH}"
 SRV="/opt/apexcore/cmd-api/server.py"
-LOG="/var/log/cmd-api.log"
+LOG="/tmp/cmd-api.log"
 SERVICE="/etc/systemd/system/cmd-api.service"
+APEXCORE_DIR="/srv/apexcore"
 
 echo "╔══════════════════════════════════════════════╗"
 echo "║  ApexCore CMD-API Bootstrap                  ║"
 echo "║  Branch: ${BRANCH}"
 echo "╚══════════════════════════════════════════════╝"
+echo ""
+
+# ── 0. Git pull + nginx vhost ─────────────────────────
+if [ -d "$APEXCORE_DIR/.git" ]; then
+  echo "[0/5] Pulling latest code..."
+  git -C "$APEXCORE_DIR" stash push -m "bootstrap-$(date +%s)" 2>/dev/null || true
+  git -C "$APEXCORE_DIR" fetch origin 2>/dev/null
+  git -C "$APEXCORE_DIR" checkout "$BRANCH" 2>/dev/null || true
+  git -C "$APEXCORE_DIR" pull origin "$BRANCH" 2>/dev/null && echo "      ✓ git pull" || echo "      ⚠ git pull failed (continuing)"
+  # Apply nginx vhost from repo
+  VHOST_SRC="$APEXCORE_DIR/infra-compose/nginx-vhost.conf"
+  if [ -f "$VHOST_SRC" ] && command -v nginx &>/dev/null; then
+    cp "$VHOST_SRC" /etc/nginx/sites-available/apexcore.conf
+    mkdir -p /etc/nginx/sites-enabled
+    [ -L /etc/nginx/sites-enabled/apexcore.conf ] || ln -sf /etc/nginx/sites-available/apexcore.conf /etc/nginx/sites-enabled/apexcore.conf
+    nginx -t 2>/dev/null && nginx -s reload && echo "      ✓ nginx vhost updated" || echo "      ⚠ nginx reload failed"
+  fi
+else
+  echo "[0/5] Skipping git pull (repo not found at $APEXCORE_DIR)"
+fi
 echo ""
 
 # ── 1. Download ──────────────────────────────────────

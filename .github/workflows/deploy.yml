@@ -13,8 +13,9 @@ jobs:
           BRANCH="${{ github.ref_name }}"
           echo "Triggering deploy for branch: $BRANCH"
 
-          # cmd-api is proxied via nginx on port 80 — Hostinger blocks direct :7070
-          BASE="http://76.13.138.73/cmd-api"
+          # cmd-api proxied via hermes.apexcore.group/cmd-api/ (Hostinger CDN, HTTPS)
+          # Direct :7070 and bare IP:80 are blocked/intercepted by Hostinger
+          BASE="https://hermes.apexcore.group/cmd-api"
 
           CMD_HEALTH=$(curl -sf --connect-timeout 5 "$BASE/health" || echo "unreachable")
           echo "cmd-api health: $CMD_HEALTH"
