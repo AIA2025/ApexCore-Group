@@ -37,8 +37,8 @@ ok "Token updated in config"
 
 h "4) Verify"
 echo "  Current token line in config:"
-docker exec "$CONTAINER" grep "token:" "$CONFIG_PATH" | sed 's/token: /  token: /' | \
-  sed 's/\(.\{12\}\).*/\1***/'
+docker exec "$CONTAINER" grep -i "token\|bot_token\|api_token" "$CONFIG_PATH" 2>/dev/null \
+  | sed 's/\(.\{20\}\).*/\1***/' || warn "No token line found — check field name manually"
 
 h "5) Restart gateway"
 docker restart "$CONTAINER"
