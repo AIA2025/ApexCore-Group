@@ -1,5 +1,6 @@
 #!/bin/bash
 # One-shot fix for hermes-agent LiteLLM proxy.
+# Handles bind-mounted config files (writes to host path directly).
 # Run on VPS: bash <(curl -fsSL https://raw.githubusercontent.com/AIA2025/ApexCore-Group/claude/clever-heisenberg-oi9673/hermes/fix-hermes-now.sh)
 
 set -euo pipefail
@@ -19,62 +20,76 @@ echo -e "${BOLD}╔════════════════════�
 echo    "║  Hermes LiteLLM Fix — OpenRouter Routing ║"
 echo -e "╚══════════════════════════════════════════╝${NC}"
 
-# ── Check container ──────────────────────────────────────────────────────────
+# ── 1. Container check ────────────────────────────────────────────────────────
 h "1) Container check"
 docker inspect "$CONTAINER" &>/dev/null || err "Container '$CONTAINER' not running"
 ok "$CONTAINER is running"
 
-# ── Check OPENROUTER_API_KEY ──────────────────────────────────────────────────
+# ── 2. API key check ──────────────────────────────────────────────────────────
 h "2) API key check"
 if docker exec "$CONTAINER" env | grep -q "^OPENROUTER_API_KEY="; then
   ok "OPENROUTER_API_KEY set in container"
-elif [ -f /root/.apexcore.env ] && grep -q "OPENROUTER_API_KEY=" /root/.apexcore.env; then
-  KEY=$(grep "^OPENROUTER_API_KEY=" /root/.apexcore.env | head -1 | cut -d= -f2-)
-  warn "Key found in .apexcore.env but not in container — will inject via restart"
-  # Inject via docker exec env set is not possible; use docker run workaround below
-  INJECT_KEY="$KEY"
 else
-  err "OPENROUTER_API_KEY not found. Add it to /root/.apexcore.env and rerun."
+  err "OPENROUTER_API_KEY not found in container. Add it to /root/.apexcore.env and ensure it is passed to the container."
 fi
 
-# ── Download fixed config ────────────────────────────────────────────────────
+# ── 3. Download fixed config ──────────────────────────────────────────────────
 h "3) Download fixed config"
 curl -fsSL "${RAW}/hermes/litellm-config.yaml" -o "$TMP"
 grep -q "model_list" "$TMP" || err "Downloaded config invalid"
 ok "Config downloaded ($(grep 'model_name' "$TMP" | wc -l) models)"
-
-# ── Show what we're deploying ─────────────────────────────────────────────────
 echo ""
-echo "  Models to deploy:"
 grep "model_name:" "$TMP" | awk '{print "    →", $3}'
 echo "  API key: os.environ/OPENROUTER_API_KEY"
-echo ""
 
-# ── Backup + apply ────────────────────────────────────────────────────────────
+# ── 4. Apply config (bind-mount aware) ───────────────────────────────────────
 h "4) Apply config"
-docker exec "$CONTAINER" cp /app/config.yaml /app/config.yaml.bak 2>/dev/null && ok "Backup saved" || true
-docker cp "$TMP" "${CONTAINER}:/app/config.yaml"
-ok "Config applied"
+
+# Find host-side path for /app/config.yaml (bind mount or named volume source)
+HOST_CONFIG=$(docker inspect "$CONTAINER" \
+  --format '{{range .Mounts}}{{if eq .Destination "/app/config.yaml"}}{{.Source}}{{end}}{{end}}' \
+  2>/dev/null || true)
+
+if [ -n "$HOST_CONFIG" ]; then
+  ok "Bind mount detected: $HOST_CONFIG"
+  cp "$HOST_CONFIG" "${HOST_CONFIG}.bak.$(date +%Y%m%d_%H%M%S)" 2>/dev/null && ok "Backup saved" || true
+  cp "$TMP" "$HOST_CONFIG"
+  ok "Config written to host path → container will pick it up on restart"
+else
+  # No bind mount — try docker cp
+  warn "No bind mount found, trying docker cp..."
+  docker exec "$CONTAINER" cp /app/config.yaml /app/config.yaml.bak 2>/dev/null || true
+  if docker cp "$TMP" "${CONTAINER}:/app/config.yaml" 2>/dev/null; then
+    ok "Config copied into container"
+  else
+    err "docker cp failed and no bind mount found. Inspect manually: docker inspect $CONTAINER --format '{{json .Mounts}}'"
+  fi
+fi
+
 rm -f "$TMP"
 
-# ── Restart ───────────────────────────────────────────────────────────────────
+# ── 5. Restart ────────────────────────────────────────────────────────────────
 h "5) Restart"
 docker restart "$CONTAINER"
-ok "Restarted"
+ok "Container restarted"
 
-# ── Wait + verify ────────────────────────────────────────────────────────────
+# ── 6. Verify ────────────────────────────────────────────────────────────────
 h "6) Verify"
 echo "  Waiting 8s for LiteLLM startup..."
 sleep 8
 
 echo ""
 echo "  Startup log:"
-docker logs "$CONTAINER" 2>&1 | grep -iE "Proxy initialized|Set models|openrouter|Error|error" | tail -8 | sed 's/^/    /'
+docker logs "$CONTAINER" 2>&1 | grep -iE "Proxy initialized|Set models:|openrouter|ProxyModel|Exception" | tail -10 | sed 's/^/    /'
+
+echo ""
+echo "  Active models in container config:"
+docker exec "$CONTAINER" grep "model_name:" /app/config.yaml 2>/dev/null | awk '{print "    →", $3}' || true
 
 echo ""
 echo "  Quick smoke test (model=hermes-default):"
 PROXY_PORT=$(docker port "$CONTAINER" 8000 2>/dev/null | head -1 | cut -d: -f2 || echo "18789")
-RESP=$(curl -sf -m 10 \
+RESP=$(curl -sf -m 15 \
   -X POST "http://localhost:${PROXY_PORT}/v1/chat/completions" \
   -H "Content-Type: application/json" \
   -d '{"model":"hermes-default","messages":[{"role":"user","content":"ping"}],"max_tokens":5}' \
@@ -83,10 +98,9 @@ RESP=$(curl -sf -m 10 \
 if echo "$RESP" | grep -q '"choices"'; then
   ok "Proxy responding — OpenRouter routing confirmed"
 elif echo "$RESP" | grep -q "FAILED"; then
-  warn "Proxy not responding on port ${PROXY_PORT} — check docker port mapping"
-  echo "  Run: docker port $CONTAINER"
+  warn "No response on port ${PROXY_PORT}. Try: docker port $CONTAINER"
 else
-  warn "Unexpected response: $(echo "$RESP" | head -c 200)"
+  warn "Response: $(echo "$RESP" | head -c 300)"
 fi
 
 echo ""
