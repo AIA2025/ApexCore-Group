@@ -80,10 +80,10 @@
     },
     {
       "parameters": {
-        "jsCode": "const fs = require('fs');\nconst data = $('Map Source -> List/Tags').item.json;\nconst entry = {\n  timestamp: new Date().toISOString(),\n  workflow: 'optin-to-brevo',\n  email: data.email,\n  source: data.source,\n  productType: data.productType,\n  language: data.language,\n  list: data.listKey,\n  listId: data.listId\n};\ntry {\n  fs.appendFileSync('/root/n8n_log.json', JSON.stringify(entry) + '\\n');\n} catch (e) {\n  // logging must never fail the contact creation\n}\nreturn [{ json: entry }];"
+        "jsCode": "const data = $('Map Source -> List/Tags').item.json;\nconst entry = {\n  timestamp: new Date().toISOString(),\n  workflow: 'optin-to-brevo',\n  email: data.email,\n  source: data.source,\n  productType: data.productType,\n  language: data.language,\n  list: data.listKey,\n  listId: data.listId\n};\n// n8n Cloud has no host filesystem access; rely on this workflow's\n// execution history (Executions tab) instead of writing to a local file.\nreturn [{ json: entry }];"
       },
       "id": "code-log-01",
-      "name": "Log to /root/n8n_log.json",
+      "name": "Log Opt-in Result",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [1080, 300]
@@ -103,7 +103,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.N8N_BASE_URL || 'http://localhost:5678' }}/webhook/welcome-followup",
+        "url": "={{ $env.N8N_BASE_URL || 'https://apexcoregroup.app.n8n.cloud' }}/webhook/welcome-followup",
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
@@ -125,11 +125,11 @@
     "Brevo: Send Welcome Mail 1": {
       "main": [
         [
-          { "node": "Log to /root/n8n_log.json", "type": "main", "index": 0 },
+          { "node": "Log Opt-in Result", "type": "main", "index": 0 },
           { "node": "Trigger Welcome Sequence (Mail 2-4)", "type": "main", "index": 0 }
         ]
       ]
     },
-    "Log to /root/n8n_log.json": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
+    "Log Opt-in Result": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
   }
 }

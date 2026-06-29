@@ -166,10 +166,10 @@
     },
     {
       "parameters": {
-        "jsCode": "const fs = require('fs');\nconst data = $('Resolve Sequence').item.json;\nconst entry = {\n  timestamp: new Date().toISOString(),\n  workflow: 'welcome-sequence-followup',\n  email: data.email,\n  list: data.listKey,\n  language: data.language,\n  mailsSent: ['mail2', 'mail3', 'mail4']\n};\ntry {\n  fs.appendFileSync('/root/n8n_log.json', JSON.stringify(entry) + '\\n');\n} catch (e) {\n  // logging must never fail the sequence\n}\nreturn [{ json: entry }];"
+        "jsCode": "const data = $('Resolve Sequence').item.json;\nconst entry = {\n  timestamp: new Date().toISOString(),\n  workflow: 'welcome-sequence-followup',\n  email: data.email,\n  list: data.listKey,\n  language: data.language,\n  mailsSent: ['mail2', 'mail3', 'mail4']\n};\n// n8n Cloud has no host filesystem access; rely on this workflow's\n// execution history (Executions tab) instead of writing to a local file.\nreturn [{ json: entry }];"
       },
       "id": "code-log-followup-01",
-      "name": "Log to /root/n8n_log.json",
+      "name": "Log Sequence Completion",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [2180, 420]
@@ -196,6 +196,6 @@
     "Wait Until Mail 3": { "main": [[{ "node": "Brevo: Send Mail 3", "type": "main", "index": 0 }]] },
     "Brevo: Send Mail 3": { "main": [[{ "node": "Wait Until Mail 4", "type": "main", "index": 0 }]] },
     "Wait Until Mail 4": { "main": [[{ "node": "Brevo: Send Mail 4", "type": "main", "index": 0 }]] },
-    "Brevo: Send Mail 4": { "main": [[{ "node": "Log to /root/n8n_log.json", "type": "main", "index": 0 }]] }
+    "Brevo: Send Mail 4": { "main": [[{ "node": "Log Sequence Completion", "type": "main", "index": 0 }]] }
   }
 }
