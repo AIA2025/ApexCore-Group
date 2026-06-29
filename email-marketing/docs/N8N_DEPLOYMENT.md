@@ -44,10 +44,12 @@ BREVO_TPL_ECOM_M4_EN=16
 # optin-to-brevo -> welcome-sequence-followup, siehe Abschnitt 7)
 N8N_BASE_URL=http://localhost:5678
 
-# Abandoned Cart Templates (noch nicht angelegt — es gibt noch keine
-# Cart-Reminder/Discount-Copy in docs/WELCOME_SEQUENCES.md)
-BREVO_TPL_CART_REMINDER=
-BREVO_TPL_CART_DISCOUNT=
+# Abandoned Cart Templates (DE/EN, live angelegt am 29-06-2026, siehe
+# docs/WELCOME_SEQUENCES.md Abschnitt "Abandoned Cart")
+BREVO_TPL_CART_REMINDER_DE=17
+BREVO_TPL_CART_REMINDER_EN=18
+BREVO_TPL_CART_DISCOUNT_DE=19
+BREVO_TPL_CART_DISCOUNT_EN=20
 CART_DISCOUNT_CODE=COMEBACK10
 ```
 

@@ -6,7 +6,7 @@ Delay-Steps (Tag 0 / 2 / 4 / 7 bzw. 0 / 2 / 5 / 8). Jede Mail existiert als
 eigenes **Template** (Transactional → Templates) in DE und EN; die Automation
 verzweigt per `IF LANGUAGE = DE` auf das passende Template.
 
-## Status: alle 16 Templates live angelegt (29-06-2026, via API)
+## Status: alle 20 Templates live angelegt (29-06-2026, via API)
 
 | Mail | DE Template-ID | EN Template-ID |
 |---|---|---|
@@ -18,6 +18,8 @@ verzweigt per `IF LANGUAGE = DE` auf das passende Template.
 | `ecom-merch` Mail 2 | 11 | 12 |
 | `ecom-merch` Mail 3 | 13 | 14 |
 | `ecom-merch` Mail 4 | 15 | 16 |
+| Abandoned-Cart Reminder (Task 5) | 17 | 18 |
+| Abandoned-Cart Discount (Task 5) | 19 | 20 |
 
 Alle 16 Template-IDs sind in `N8N_DEPLOYMENT.md` als ENV-Vars eingetragen
 (`BREVO_TPL_DIGITAL_*`, `BREVO_TPL_ECOM_*` inkl. `_M2/M3/M4_DE/EN`). Die
@@ -204,6 +206,54 @@ komplette 4-Mail-Sequenz ohne manuellen Brevo-UI-Schritt einsatzbereit.
 > **[Grab it now →]({{ params.SHOP_URL }})**
 
 ---
+
+## Sequenz: Abandoned Cart (Task 5)
+
+Wird vom n8n-Workflow `abandoned-cart-followup.json` getriggert (1h-Delay →
+Reminder, 24h-Delay → Discount), sprachabhängig anhand des `LANGUAGE`-
+Contact-Attributs (siehe `docs/N8N_DEPLOYMENT.md`).
+
+### Reminder — 1h nach Warenkorb-Abbruch
+
+**DE — Betreff:** Du hast etwas in deinem Warenkorb vergessen 🛒
+
+> Hi,
+>
+> dein Warenkorb wartet noch auf dich: **{{ params.PRODUCT_NAME }}**.
+>
+> **[Zurück zum Warenkorb →]({{ params.CART_URL }})**
+>
+> Falls du Fragen hast, antworte einfach auf diese Mail.
+
+**EN — Subject:** You left something in your cart 🛒
+
+> Hi,
+>
+> your cart is still waiting for you: **{{ params.PRODUCT_NAME }}**.
+>
+> **[Back to your cart →]({{ params.CART_URL }})**
+>
+> If you have any questions, just reply to this email.
+
+### Discount — 24h nach Reminder (falls noch nicht gekauft)
+
+**DE — Betreff:** Nur für dich: 10% auf {{ params.PRODUCT_NAME }}
+
+> Damit es sich noch mehr lohnt: **10% Rabatt** mit dem Code
+> **{{ params.DISCOUNT_CODE }}** auf deinen Warenkorb.
+>
+> **[Jetzt mit Rabatt abschließen →]({{ params.CART_URL }})**
+>
+> Der Code ist zeitlich begrenzt gültig.
+
+**EN — Subject:** Just for you: 10% off {{ params.PRODUCT_NAME }}
+
+> To make it even better: **10% off** your cart with code
+> **{{ params.DISCOUNT_CODE }}**.
+>
+> **[Complete your order with the discount →]({{ params.CART_URL }})**
+>
+> This code is valid for a limited time.
 
 ## Hinweise
 
