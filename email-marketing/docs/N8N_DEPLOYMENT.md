@@ -9,9 +9,50 @@ auf das tatsächlich genutzte Konto **nicht** zu: ApexCore betreibt
 Host-Dateisystem-Zugriff und keine klassische REST-API-Anmeldung — die
 Workflows wurden stattdessen direkt über den offiziellen n8n-MCP-Server
 (Workflow-SDK) im Cloud-Workspace angelegt und aktiviert. Abschnitte 1–7
-unten beschreiben weiterhin die Logik/ENV-Variablen korrekt, aber Schritte
-2 ("Docker Compose"), 4 ("Workflows importieren" per Skript) und 6
-("Logging" in `/root/n8n_log.json`) gelten **nicht** für die Cloud-Instanz.
+unten beschreiben weiterhin die Logik korrekt, aber Schritte 2 ("Docker
+Compose"), 4 ("Workflows importieren" per Skript) und 6 ("Logging" in
+`/root/n8n_log.json`) gelten **nicht** für die Cloud-Instanz. Abschnitt 1
+("ENV-Variablen") beschreibt zudem ein Design, das auf n8n Cloud aus dem
+in Abschnitt 0a beschriebenen Grund **nicht** funktioniert — die dort
+gelisteten Listen-/Template-IDs sind weiterhin die korrekten, live in
+Brevo angelegten Werte, sie werden in den drei Workflows nur direkt als
+Literale statt über `$env.*` referenziert.
+
+### 0a. Zweite Plattform-Einschränkung: kein `$env`-Zugriff in Code-/Expression-Nodes
+
+Beim ersten Live-Test des Opt-in-Webhooks (29.06.2026) lieferte
+`/webhook/optin` HTTP 200 mit leerem Body statt der erwarteten JSON-Antwort.
+Analyse der Execution per `get_execution` (`includeData: true`) zeigte den
+tatsächlichen Fehler: `Cannot assign to read only property 'name' of
+object 'Error: access to env vars denied'`, ausgelöst in
+`workflow-data-proxy-env-provider.js` im JS-Task-Runner von n8n Cloud.
+
+**n8n Cloud verweigert grundsätzlich den Zugriff auf `$env` innerhalb von
+Code-Nodes und Ausdrücken** (`={{ $env.X }}`) — unabhängig vom
+`NODE_FUNCTION_ALLOW_BUILTIN`-Workaround aus Abschnitt 2, der auf der
+selbst-gehosteten Variante zutrifft, aber für Cloud nicht gilt. Betroffen
+waren dadurch praktisch alle `$env.*`-Referenzen in allen drei Workflows:
+
+- `Map Source -> List/Tags` (Code-Node, `optin-to-brevo`)
+- `Trigger Welcome Sequence (Mail 2-4)` (HTTP-Node-URL, `optin-to-brevo`)
+- `Resolve Sequence` (Code-Node, `welcome-sequence-followup`)
+- `Brevo: Send Reminder Mail` / `Brevo: Send Discount Mail`
+  (HTTP-Node-`jsonBody`, `abandoned-cart-followup`)
+
+**Fix (umgesetzt 29.06.2026, live):** alle `$env.*`-Referenzen in den
+genannten Nodes durch die bereits bekannten, live in Brevo angelegten
+numerischen IDs als Literale ersetzt (per `update_workflow`/
+`setNodeParameter` direkt an den drei aktiven Cloud-Workflows, danach
+`publish_workflow`) — Workflow-IDs, Webhook-Pfade und Aktivierungsstatus
+blieben dabei unverändert. Die JSON-Dateien in
+`email-marketing/n8n-workflows/` in diesem Repo wurden entsprechend
+angepasst, damit sie den tatsächlichen Live-Stand widerspiegeln.
+
+Damit bleiben auf n8n Cloud insgesamt zwei bestätigte, plattformbedingte
+Einschränkungen: (1) keine `$env`-Variablen in Code-/Expression-Nodes
+(dieser Abschnitt, gelöst durch Literale) und (2) keine programmatische
+Zuordnung von Generic-Auth-Credentials zu `httpRequest`-Nodes per MCP-Tool
+(siehe unten, weiterhin nur manuell lösbar).
 
 **Live-Status:**
 
@@ -38,11 +79,28 @@ muss durch die Cloud-URL ersetzt werden).
 
 **Einziger verbleibender manueller Schritt:** Der n8n-MCP-Server stellt
 **keinen** Tool zum Anlegen von Credentials bereit (nur `list_credentials`
-zum Lesen). Die Credential "Brevo API Key" muss daher einmalig manuell im
-n8n-Cloud-Dashboard angelegt werden (siehe Abschnitt 3) — alle drei
-Workflows referenzieren sie bereits per Platzhalter und müssen nach dem
-Anlegen nur noch zugeordnet werden (n8n zeigt das an den jeweiligen
-HTTP-Request-Nodes als "Credential fehlt" an).
+zum Lesen) — die Credential **"Header Auth account"** (Header Auth, Header
+`api-key`) wurde daher bereits manuell im n8n-Cloud-Dashboard angelegt
+(Credential-ID `ehIlK7HKhfWPJTaK`, Stand 29.06.2026, sichtbar per
+`list_credentials`).
+
+Die **Zuordnung** dieser Credential zu den neun Brevo-HTTP-Request-Nodes
+ist jedoch ebenfalls **nicht** per MCP-Tool möglich — getestet wurde
+`update_workflow` mit `setNodeCredential` sowie `addNode` mit eingebetteter
+`credentials`-Angabe sowie `create_workflow_from_code` mit
+`newCredential(...)`-Referenz; alle drei Wege liefern für
+`n8n-nodes-base.httpRequest` denselben Fehler ("node type ... does not
+accept credential ...") für jeden Generic-Auth-Credential-Typ
+(`httpHeaderAuth`, `httpBasicAuth`, `httpQueryAuth`, `httpCustomAuth`,
+`httpDigestAuth`, `httpBearerAuth`, `oAuth1Api`, `oAuth2Api`) — nur der
+fixe `httpSslAuth`-Slot wird überhaupt akzeptiert. Andere Node-Typen mit
+einer einzigen, fest verdrahteten Credential (z. B. `openAiApi` am
+`n8n-nodes-base.openAi`-Node) funktionieren über denselben Mechanismus
+einwandfrei — die Einschränkung betrifft also gezielt Generic-Auth-Slots
+an HTTP-Request-Nodes und wirkt wie eine bewusste Schutzmaßnahme des
+MCP-Servers gegen das automatisierte Verdrahten beliebiger Credentials an
+beliebige HTTP-Ziele. Die Zuordnung an den neun Nodes (siehe Abschnitt 3)
+muss daher ebenfalls manuell in der n8n-Cloud-UI erfolgen.
 
 ## 1. ENV-Variablen
 
@@ -133,21 +191,38 @@ Workflow-Node direkt ausgelesen — nur die Credential (Schritt 3) liest ihn,
 und n8n maskiert Credential-Felder grundsätzlich in der UI und in
 Execution-Daten.
 
-## 3. n8n Credential anlegen
+## 3. n8n Credential anlegen + zuordnen
 
-**Status: noch offen — einziger verbleibender manueller Schritt (siehe Abschnitt 0).**
+**Status: Credential angelegt (29.06.2026) — Zuordnung an den Nodes noch
+offen, einziger verbleibender manueller Schritt (siehe Abschnitt 0).**
 
-**n8n Cloud UI (`https://apexcoregroup.app.n8n.cloud`) → Credentials → New → Header Auth**
+Bereits angelegt in der n8n Cloud UI (`https://apexcoregroup.app.n8n.cloud`
+→ Credentials → New → Header Auth):
 
-| Feld   | Wert                          |
-|--------|--------------------------------|
-| Name   | `Brevo API Key`                |
-| Header | `api-key`                       |
-| Value  | (Wert aus `BREVO_API_KEY` einfügen) |
+| Feld           | Wert                          |
+|----------------|--------------------------------|
+| Name           | `Header Auth account` (von n8n vorgeschlagener Default-Name) |
+| Credential-ID  | `ehIlK7HKhfWPJTaK`             |
+| Header         | `api-key`                       |
+| Value          | (Brevo API Key, maskiert in n8n) |
 
-Diese Credential wird von allen drei importierten Workflows
-(`optin-to-brevo`, `welcome-sequence-followup`, `abandoned-cart-followup`)
-für alle Brevo-HTTP-Request-Nodes genutzt.
+**Noch zu erledigen (manuell, n8n Cloud UI):** Diese Credential an den
+neun Brevo-HTTP-Request-Nodes zuordnen — geprüft und bestätigt, dass dies
+über keinen der 27 MCP-Server-Tools möglich ist (siehe Abschnitt 0 für die
+Details der getesteten Wege). In der UI: jeden Node öffnen → Feld
+"Credential for Header Auth" → `Header Auth account` auswählen → Workflow
+speichern. Betroffene Nodes:
+
+- **ApexCore - Opt-in to Brevo** (`jeF09hmOYJr9iBAY`): "Brevo: Upsert
+  Contact", "Brevo: Send Welcome Mail 1"
+- **ApexCore - Welcome Sequence Followup (Mail 2-4)** (`1QOyZQ9gJ9RWk6SY`):
+  "Brevo: Send Mail 2", "Brevo: Send Mail 3", "Brevo: Send Mail 4"
+- **ApexCore - Abandoned Cart Follow-up** (`pjGSyElFgIXQXGT3`): "Brevo:
+  Get Contact (1)", "Brevo: Send Reminder Mail", "Brevo: Get Contact (2)",
+  "Brevo: Send Discount Mail"
+
+(`Trigger Welcome Sequence (Mail 2-4)` in `optin-to-brevo` braucht **keine**
+Brevo-Credential — er ruft nur den eigenen n8n-Webhook auf.)
 
 ## 4. Workflows importieren
 
@@ -236,9 +311,10 @@ manuellen Brevo-Dashboard-Klick.
 
 - [x] Brevo-ENV-Vars (Listen-/Template-IDs) live in Brevo angelegt, siehe `docs/BREVO_LISTS_TAGS.md` / `docs/WELCOME_SEQUENCES.md`
 - [x] Alle drei Workflows per n8n-MCP-Workflow-SDK im Cloud-Workspace angelegt (`jeF09hmOYJr9iBAY`, `1QOyZQ9gJ9RWk6SY`, `pjGSyElFgIXQXGT3`) und aktiviert
-- [ ] Credential "Brevo API Key" (Header Auth) in n8n Cloud angelegt — **manuell, kein API/MCP-Tool verfügbar**
-- [ ] Nach Anlegen der Credential: an allen Brevo-HTTP-Request-Nodes in allen drei Workflows zuordnen (n8n markiert sie sonst als "Credential fehlt")
-- [ ] Webhook-URLs gegen `https://apexcoregroup.app.n8n.cloud/webhook/...` getestet (curl-Beispiele oben, Domain anpassen)
+- [x] Credential "Header Auth account" (Header Auth, `ehIlK7HKhfWPJTaK`) in n8n Cloud angelegt — **manuell, kein API/MCP-Tool verfügbar**
+- [ ] Credential an den neun Brevo-HTTP-Request-Nodes in allen drei Workflows zuordnen (siehe Abschnitt 3 für die Liste) — **manuell, nachweislich über keinen der 27 MCP-Tools möglich** (getestet: `setNodeCredential`, `addNode` mit Credentials, `create_workflow_from_code`; alle lehnen Generic-Auth-Credentials an `httpRequest`-Nodes kategorisch ab, vermutlich als Schutzmaßnahme gegen automatisiertes Verdrahten beliebiger Credentials an beliebige HTTP-Ziele)
+- [x] `$env`-Zugriffsfehler in Code-/Expression-Nodes behoben (siehe Abschnitt 0a) — alle drei Workflows mit Literal-Werten statt `$env.*` aktualisiert und neu published (29.06.2026)
+- [ ] Webhook-URLs gegen `https://apexcoregroup.app.n8n.cloud/webhook/...` end-to-end erneut getestet, nachdem der `$env`-Fix live ist — erwartet: Workflows laufen jetzt durch die Code-Node-Logik durch, schlagen aber an den Brevo-HTTP-Auth-Schritten weiterhin mit 401 fehl, bis die Credential-Zuordnung (Punkt oben) manuell erfolgt ist
 
 Die untenstehenden Abschnitte 1–7 (ENV-Variablen-Referenz, Webhook-Pfade,
 Sequenz-Logik) bleiben fachlich gültig; Abschnitte 2, 4 und 6 beschreiben

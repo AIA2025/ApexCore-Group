@@ -97,7 +97,7 @@
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={{ {\n  \"templateId\": ($('Brevo: Get Contact (1)').item.json.attributes && $('Brevo: Get Contact (1)').item.json.attributes.LANGUAGE === 'DE') ? Number($env.BREVO_TPL_CART_REMINDER_DE || 0) : Number($env.BREVO_TPL_CART_REMINDER_EN || 0),\n  \"to\": [ { \"email\": $('Extract Payload').item.json.email } ],\n  \"params\": {\n    \"PRODUCT_NAME\": $('Extract Payload').item.json.productName,\n    \"CART_URL\": $('Extract Payload').item.json.cartUrl\n  }\n} }}",
+        "jsonBody": "={{ {\n  \"templateId\": ($('Brevo: Get Contact (1)').item.json.attributes && $('Brevo: Get Contact (1)').item.json.attributes.LANGUAGE === 'DE') ? 17 : 18,\n  \"to\": [ { \"email\": $('Extract Payload').item.json.email } ],\n  \"params\": {\n    \"PRODUCT_NAME\": $('Extract Payload').item.json.productName,\n    \"CART_URL\": $('Extract Payload').item.json.cartUrl\n  }\n} }}",
         "options": {}
       },
       "id": "http-reminder-01",
@@ -168,7 +168,7 @@
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",
-        "jsonBody": "={{ {\n  \"templateId\": ($('Brevo: Get Contact (2)').item.json.attributes && $('Brevo: Get Contact (2)').item.json.attributes.LANGUAGE === 'DE') ? Number($env.BREVO_TPL_CART_DISCOUNT_DE || 0) : Number($env.BREVO_TPL_CART_DISCOUNT_EN || 0),\n  \"to\": [ { \"email\": $('Extract Payload').item.json.email } ],\n  \"params\": {\n    \"PRODUCT_NAME\": $('Extract Payload').item.json.productName,\n    \"CART_URL\": $('Extract Payload').item.json.cartUrl,\n    \"DISCOUNT_CODE\": $env.CART_DISCOUNT_CODE || \"COMEBACK10\"\n  }\n} }}",
+        "jsonBody": "={{ {\n  \"templateId\": ($('Brevo: Get Contact (2)').item.json.attributes && $('Brevo: Get Contact (2)').item.json.attributes.LANGUAGE === 'DE') ? 19 : 20,\n  \"to\": [ { \"email\": $('Extract Payload').item.json.email } ],\n  \"params\": {\n    \"PRODUCT_NAME\": $('Extract Payload').item.json.productName,\n    \"CART_URL\": $('Extract Payload').item.json.cartUrl,\n    \"DISCOUNT_CODE\": \"COMEBACK10\"\n  }\n} }}",
         "options": {}
       },
       "id": "http-discount-01",
