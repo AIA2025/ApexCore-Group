@@ -314,7 +314,7 @@ manuellen Brevo-Dashboard-Klick.
 - [x] Credential "Header Auth account" (Header Auth, `ehIlK7HKhfWPJTaK`) in n8n Cloud angelegt — **manuell, kein API/MCP-Tool verfügbar**
 - [ ] Credential an den neun Brevo-HTTP-Request-Nodes in allen drei Workflows zuordnen (siehe Abschnitt 3 für die Liste) — **manuell, nachweislich über keinen der 27 MCP-Tools möglich** (getestet: `setNodeCredential`, `addNode` mit Credentials, `create_workflow_from_code`; alle lehnen Generic-Auth-Credentials an `httpRequest`-Nodes kategorisch ab, vermutlich als Schutzmaßnahme gegen automatisiertes Verdrahten beliebiger Credentials an beliebige HTTP-Ziele)
 - [x] `$env`-Zugriffsfehler in Code-/Expression-Nodes behoben (siehe Abschnitt 0a) — alle drei Workflows mit Literal-Werten statt `$env.*` aktualisiert und neu published (29.06.2026)
-- [ ] Webhook-URLs gegen `https://apexcoregroup.app.n8n.cloud/webhook/...` end-to-end erneut getestet, nachdem der `$env`-Fix live ist — erwartet: Workflows laufen jetzt durch die Code-Node-Logik durch, schlagen aber an den Brevo-HTTP-Auth-Schritten weiterhin mit 401 fehl, bis die Credential-Zuordnung (Punkt oben) manuell erfolgt ist
+- [x] Webhook `/webhook/optin` nach dem `$env`-Fix erneut getestet (29.06.2026, Execution-ID 11): `Map Source -> List/Tags` läuft jetzt fehlerfrei durch (korrekte `listId`/`templateId` aus den Literalen), Workflow bricht wie erwartet erst am nächsten Node ab — `Brevo: Upsert Contact` mit `"Credentials not found"` (= die offene, manuelle Credential-Zuordnung oben, kein neuer Bug)
 
 Die untenstehenden Abschnitte 1–7 (ENV-Variablen-Referenz, Webhook-Pfade,
 Sequenz-Logik) bleiben fachlich gültig; Abschnitte 2, 4 und 6 beschreiben
