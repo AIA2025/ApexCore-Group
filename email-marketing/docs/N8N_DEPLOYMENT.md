@@ -9,12 +9,12 @@ ergänzen:
 # Brevo
 BREVO_API_KEY=xkeysib-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
-# Brevo List IDs (aus dem Brevo-Dashboard nach Listen-Anlage, siehe
+# Brevo List IDs (bereits live angelegt am 29-06-2026, siehe
 # docs/BREVO_LISTS_TAGS.md)
-BREVO_LIST_DIGITAL_PRODUCTS=
-BREVO_LIST_ECOM_MERCH=
-BREVO_LIST_GENERAL_LEADS=
-BREVO_LIST_VIP=
+BREVO_LIST_DIGITAL_PRODUCTS=4
+BREVO_LIST_ECOM_MERCH=5
+BREVO_LIST_GENERAL_LEADS=6
+BREVO_LIST_VIP=7
 
 # Brevo Template IDs (Mail 1 je Sequenz/Sprache, siehe docs/WELCOME_SEQUENCES.md)
 BREVO_TPL_DIGITAL_DE=

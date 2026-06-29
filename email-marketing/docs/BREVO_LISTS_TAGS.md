@@ -1,33 +1,30 @@
 # Brevo Listen, Tags & Segmente (Task 2)
 
-## Listen anlegen
+## Listen — angelegt am 29-06-2026 via Brevo API
 
-**Contacts → Lists → Create a list**, jeweils im Folder "ApexCore":
+Folder `ApexCore` (folderId `3`) im Account `marketing@apexcore.group`:
 
-| Listenname         | Zweck                                          |
-|---------------------|------------------------------------------------|
-| `digital-products`  | Gumroad-Käufer, Digital-Product-Waitlist        |
-| `ecom-merch`        | Shop-Besucher, Merch-Käufer                     |
-| `general-leads`     | Allgemeine Opt-ins ohne spezifische Zuordnung   |
-| `vip`               | Repeat-Buyer, High-Value-Kunden                 |
+| Listenname         | List-ID | Zweck                                          |
+|---------------------|--------|------------------------------------------------|
+| `digital-products`  | `4`    | Gumroad-Käufer, Digital-Product-Waitlist        |
+| `ecom-merch`        | `5`    | Shop-Besucher, Merch-Käufer                     |
+| `general-leads`     | `6`    | Allgemeine Opt-ins ohne spezifische Zuordnung   |
+| `vip`               | `7`    | Repeat-Buyer, High-Value-Kunden                 |
 
-Nach dem Anlegen jeder Liste die **numerische List-ID** aus der URL oder über
-**List → Settings** notieren und in `/root/.apexcore.env` eintragen (siehe
-`N8N_DEPLOYMENT.md`):
+Bereits in `N8N_DEPLOYMENT.md` als ENV-Vars eingetragen:
 
 ```
-BREVO_LIST_DIGITAL_PRODUCTS=<id>
-BREVO_LIST_ECOM_MERCH=<id>
-BREVO_LIST_GENERAL_LEADS=<id>
-BREVO_LIST_VIP=<id>
+BREVO_LIST_DIGITAL_PRODUCTS=4
+BREVO_LIST_ECOM_MERCH=5
+BREVO_LIST_GENERAL_LEADS=6
+BREVO_LIST_VIP=7
 ```
 
-## Contact Attributes ("Tags")
+## Contact Attributes ("Tags") — bereits angelegt am 29-06-2026
 
 Brevo hat kein freistehendes "Tag"-Feature wie andere ESPs — Tags werden als
-**Custom Contact Attributes** abgebildet. Unter **Contacts → Settings →
-Contact attributes → Add a new attribute** folgende Attribute anlegen
-(Typ: *Text*, außer wo anders angegeben):
+**Custom Contact Attributes** abgebildet. Via Brevo API angelegt
+(`POST /v3/contacts/attributes/normal/{NAME}`):
 
 | Attribut         | Typ      | Werte (Beispiel)                          |
 |------------------|----------|--------------------------------------------|
@@ -54,6 +51,6 @@ jedem Kontakt-Upsert gesetzt und vom Abandoned-Cart-Workflow gelesen
 
 ## Checkliste
 
-- [ ] 4 Listen angelegt, IDs in `/root/.apexcore.env` eingetragen
-- [ ] Attribute `SOURCE`, `PRODUCT_TYPE`, `LANGUAGE`, `PURCHASED` angelegt
-- [ ] Sprach-Segmente für DE/EN je Liste angelegt
+- [x] 4 Listen angelegt, IDs in `N8N_DEPLOYMENT.md` eingetragen
+- [x] Attribute `SOURCE`, `PRODUCT_TYPE`, `LANGUAGE`, `PURCHASED` angelegt
+- [ ] Sprach-Segmente für DE/EN je Liste angelegt (manuell im Brevo-UI, Segment-API nicht abgedeckt)

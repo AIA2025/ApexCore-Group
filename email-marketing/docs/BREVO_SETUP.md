@@ -1,95 +1,118 @@
 # Brevo Account & Domain-Authentifizierung (Task 1)
 
-Diese Schritte erfordern Zugriff auf das Brevo-Dashboard und das Hostinger
-cPanel und müssen manuell (oder von einem Operator mit den entsprechenden
-Zugängen) ausgeführt werden — es gibt keine API, um ein Brevo-Konto oder
-DNS-Einträge ohne menschliche Bestätigung anzulegen.
+Status: Account, Domain-Anlage und Sender sind bereits live (29-06-2026, via
+Brevo API). Offen ist nur noch das **Eintragen der unten stehenden Records
+beim tatsächlichen DNS-Provider** und der Klick auf "Authenticate"/"Verify"
+im Brevo-Dashboard — das erfordert DNS-Zugriff und kann nicht über die API
+erledigt werden.
 
-## 1. Account anlegen
+## ⚠️ Wichtig: DNS-Provider ist Porkbun, nicht Hostinger
 
-1. https://app.brevo.com/account/register
-2. Login-Email: `marketing@apexcore.group`
-3. Firmenname: `ApexCore`
-4. Nach Bestätigung: **Settings → Senders, Domains & Dedicated IPs**
+Brevo hat bei der Domain-Anlage automatisch erkannt:
+`"domain_provider": "Porkbun"`. Das bedeutet: die **autoritativen
+Nameserver für `apexcore.group` zeigen aktuell auf Porkbun**, nicht auf
+Hostinger. Die Records unten müssen daher im **Porkbun DNS-Management**
+eingetragen werden:
 
-## 2. Domain verifizieren
+- https://porkbun.com/account/login → Domain Management → `apexcore.group` → DNS Records
 
-1. **Domains → Add a domain** → `apexcore.group`
-2. Brevo zeigt einen TXT-Record zur Domain-Verifizierung an, z. B.:
-   ```
-   Type:  TXT
-   Host:  apexcore.group
-   Value: brevo-code:xxxxxxxxxxxxxxxxxxxx
-   ```
-3. Diesen Record in Hostinger cPanel → **Zone Editor → apexcore.group → Add Record** eintragen.
-4. Zurück in Brevo auf **Verify** klicken.
+Falls die Domain eigentlich über Hostinger cPanel verwaltet werden soll,
+zuerst prüfen, ob die Nameserver-Delegation umgestellt werden muss — sonst
+landen Einträge im Hostinger cPanel ins Leere, weil die Nameserver dort
+nicht autoritativ sind.
 
-## 3. DKIM einrichten
+## 1. Account — erledigt
 
-Nach der Domain-Verifizierung zeigt Brevo zwei DKIM-Records (Brevo generiert
-diese individuell pro Account — die folgenden sind das erwartete Format,
-nicht die echten Werte):
+- Account: `marketing@apexcore.group`, Firma "ApexCore Group d.o.o."
+- Bestätigt via `GET /v3/account`
+
+## 2. Domain — angelegt, Verifizierung offen
+
+Domain `apexcore.group` wurde via `POST /v3/senders/domains` angelegt
+(domain id `6a424bb1a2567b6c0e0d86b2`). Brevo gibt folgende **echten**
+Records zurück, die jetzt bei Porkbun eingetragen werden müssen:
 
 ```
 Type:  TXT
-Host:  mail._domainkey.apexcore.group
-Value: k=rsa; p=<von Brevo generierter Public Key>
+Host:  apexcore.group  (oder "@")
+Value: brevo-code:40c34601a468dbf26ca00e2d47805dbc
 ```
 
-In Hostinger cPanel Zone Editor eintragen, dann in Brevo auf **Authenticate**
-klicken, um DKIM zu validieren.
+Danach in Brevo: **Senders, Domains & Dedicated IPs → Domains → apexcore.group → Verify**.
+
+## 3. DKIM — Records bekannt, noch einzutragen
+
+Brevo nutzt hier CNAME- statt klassische TXT-Records:
+
+```
+Type:  CNAME
+Host:  brevo1._domainkey
+Value: b1.apexcore-group.dkim.brevo.com
+
+Type:  CNAME
+Host:  brevo2._domainkey
+Value: b2.apexcore-group.dkim.brevo.com
+```
+
+Bei Porkbun eintragen, danach in Brevo auf **Authenticate** klicken.
 
 ## 4. SPF einrichten
 
-Falls noch kein SPF-Record existiert, neuen TXT-Record anlegen:
+Brevo hat bei `POST /v3/senders` (Sender "ApexCore") `"spfError": true`
+zurückgegeben — SPF ist noch nicht gesetzt. Die API hat dafür keinen
+fertigen Record zurückgegeben (Brevo zeigt den empfohlenen SPF-String
+dashboard-seitig unter Domains → apexcore.group an); Standard-Empfehlung:
 
 ```
 Type:  TXT
-Host:  apexcore.group
+Host:  apexcore.group  (oder "@")
 Value: v=spf1 include:spf.brevo.com mx ~all
 ```
 
-Falls bereits ein SPF-Record existiert (z. B. von Hostinger Mail oder einem
-anderen Versanddienst), **nicht** einen zweiten anlegen — stattdessen
-`include:spf.brevo.com` in den bestehenden Record einfügen, da pro Domain nur
-ein SPF-TXT-Record gültig ist:
+Falls bereits ein SPF-Record existiert, **nicht** einen zweiten anlegen,
+sondern `include:spf.brevo.com` in den bestehenden Record einfügen (pro
+Domain ist nur ein SPF-TXT-Record gültig):
 
 ```
 v=spf1 include:spf.brevo.com include:<bestehender-anbieter> mx ~all
 ```
 
-## 5. DMARC einrichten
+## 5. DMARC — Record bekannt, noch einzutragen
 
-Neuen TXT-Record anlegen (verschärft schrittweise, beginnend mit `p=none`
-zur Beobachtung, danach auf `quarantine`/`reject` hochstufen):
+Von Brevo zurückgegeben (Status bereits `true`, d. h. Brevo erkennt den
+Record als ausreichend, sobald er existiert):
 
 ```
 Type:  TXT
-Host:  _dmarc.apexcore.group
-Value: v=DMARC1; p=none; rua=mailto:dmarc-reports@apexcore.group; fo=1
+Host:  _dmarc
+Value: v=DMARC1; p=none; rua=mailto:rua@dmarc.brevo.com
 ```
 
-Nach 2–4 Wochen ohne Fehlalarme auf `p=quarantine`, danach `p=reject`
-hochstufen.
+Hinweis: Brevo schlägt hier standardmäßig `rua=mailto:rua@dmarc.brevo.com`
+vor (Brevo sammelt die Reports). Wer eigene Reports unter
+`dmarc-reports@apexcore.group` sammeln möchte, kann den `rua`-Wert anpassen
+oder per Komma ergänzen: `rua=mailto:rua@dmarc.brevo.com,mailto:dmarc-reports@apexcore.group`.
+Nach 2–4 Wochen ohne Fehlalarme von `p=none` auf `p=quarantine`, danach
+`p=reject` hochstufen.
 
-## 6. Sender-Name setzen
+## 6. Sender — erledigt
 
-**Senders, Domains & Dedicated IPs → Senders → Add a sender**
+Via `POST /v3/senders` angelegt (sender id `2`):
 
 | Feld          | Wert                       |
 |---------------|----------------------------|
 | Sender name   | `ApexCore`                 |
 | Sender email  | `noreply@apexcore.group`   |
-| Reply-to      | `sales@apexcore.group`     |
 
-Für transaktionale/Welcome-Mails diesen Sender als Default in
-**Transactional → Settings** hinterlegen.
+Reply-to (`sales@apexcore.group`) und Default-Sender für
+Transactional/Welcome-Mails noch manuell in **Transactional → Settings**
+hinterlegen — dafür gibt es keinen API-Endpoint.
 
 ## Checkliste
 
-- [ ] Brevo-Account mit `marketing@apexcore.group` erstellt
-- [ ] Domain `apexcore.group` verifiziert (TXT)
-- [ ] DKIM-Record eingetragen und in Brevo als "Authenticated" markiert
-- [ ] SPF-Record enthält `include:spf.brevo.com`
-- [ ] DMARC-Record unter `_dmarc.apexcore.group` aktiv
-- [ ] Sender "ApexCore" `<noreply@apexcore.group>` angelegt
+- [x] Brevo-Account mit `marketing@apexcore.group` erstellt
+- [x] Domain `apexcore.group` in Brevo angelegt (API)
+- [ ] DNS-Records bei **Porkbun** eintragen (TXT brevo-code, 2× CNAME DKIM, TXT SPF, TXT DMARC)
+- [ ] In Brevo "Verify" (Domain) und "Authenticate" (DKIM) klicken
+- [x] Sender "ApexCore" `<noreply@apexcore.group>` angelegt (API)
+- [ ] Reply-to + Default-Transactional-Sender manuell im Dashboard setzen
