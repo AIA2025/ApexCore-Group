@@ -1,0 +1,111 @@
+{
+  "name": "ApexCore - Opt-in to Brevo",
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "optin",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "wh-optin-01",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "apexcore-optin"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst email = (body.email || '').toLowerCase().trim();\nconst name = body.name || '';\nconst source = body.source || 'unknown';\nconst productType = body.product_type || 'unknown';\nconst language = (body.language || 'EN').toUpperCase();\n\nif (!email) {\n  throw new Error('email is required');\n}\n\n// Map source/product_type -> Brevo list. Replace the placeholder IDs\n// below with the real numeric list IDs from your Brevo account\n// (Brevo > Contacts > Lists). See docs/BREVO_LISTS_TAGS.md.\nconst LIST_IDS = {\n  'digital-products': Number($env.BREVO_LIST_DIGITAL_PRODUCTS || 0),\n  'ecom-merch': Number($env.BREVO_LIST_ECOM_MERCH || 0),\n  'general-leads': Number($env.BREVO_LIST_GENERAL_LEADS || 0),\n  'vip': Number($env.BREVO_LIST_VIP || 0)\n};\n\nfunction resolveListKey(source, productType) {\n  const s = (source || '').toLowerCase();\n  const p = (productType || '').toLowerCase();\n  if (p.includes('gumroad') || p.includes('digital') || s.includes('gumroad') || s.includes('waitlist')) {\n    return 'digital-products';\n  }\n  if (p.includes('merch') || p.includes('shop') || s.includes('shop') || s.includes('ecom')) {\n    return 'ecom-merch';\n  }\n  return 'general-leads';\n}\n\nconst listKey = resolveListKey(source, productType);\nconst listId = LIST_IDS[listKey];\n\n// Welcome-sequence template per list + language, see docs/WELCOME_SEQUENCES.md\nconst TEMPLATE_IDS = {\n  'digital-products': { DE: Number($env.BREVO_TPL_DIGITAL_DE || 0), EN: Number($env.BREVO_TPL_DIGITAL_EN || 0) },\n  'ecom-merch': { DE: Number($env.BREVO_TPL_ECOM_DE || 0), EN: Number($env.BREVO_TPL_ECOM_EN || 0) },\n  'general-leads': { DE: Number($env.BREVO_TPL_GENERAL_DE || 0), EN: Number($env.BREVO_TPL_GENERAL_EN || 0) }\n};\nconst lang = (language === 'DE') ? 'DE' : 'EN';\nconst templateId = (TEMPLATE_IDS[listKey] || {})[lang] || 0;\n\nreturn [{\n  json: {\n    email,\n    name,\n    source,\n    productType,\n    language: lang,\n    listKey,\n    listId,\n    templateId\n  }\n}];"
+      },
+      "id": "code-map-01",
+      "name": "Map Source -> List/Tags",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.brevo.com/v3/contacts",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"email\": $json.email,\n  \"attributes\": {\n    \"FIRSTNAME\": $json.name,\n    \"SOURCE\": $json.source,\n    \"PRODUCT_TYPE\": $json.productType,\n    \"LANGUAGE\": $json.language\n  },\n  \"listIds\": [ $json.listId ],\n  \"updateEnabled\": true\n} }}",
+        "options": {}
+      },
+      "id": "http-upsert-01",
+      "name": "Brevo: Upsert Contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [640, 300],
+      "credentials": {
+        "httpHeaderAuth": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo API Key" }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.brevo.com/v3/smtp/email",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"templateId\": $('Map Source -> List/Tags').item.json.templateId,\n  \"to\": [ { \"email\": $('Map Source -> List/Tags').item.json.email, \"name\": $('Map Source -> List/Tags').item.json.name } ],\n  \"params\": {\n    \"NAME\": $('Map Source -> List/Tags').item.json.name,\n    \"SOURCE\": $('Map Source -> List/Tags').item.json.source\n  }\n} }}",
+        "options": {}
+      },
+      "id": "http-welcome-01",
+      "name": "Brevo: Send Welcome Mail 1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [860, 300],
+      "credentials": {
+        "httpHeaderAuth": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo API Key" }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const fs = require('fs');\nconst data = $('Map Source -> List/Tags').item.json;\nconst entry = {\n  timestamp: new Date().toISOString(),\n  workflow: 'optin-to-brevo',\n  email: data.email,\n  source: data.source,\n  productType: data.productType,\n  language: data.language,\n  list: data.listKey,\n  listId: data.listId\n};\ntry {\n  fs.appendFileSync('/root/n8n_log.json', JSON.stringify(entry) + '\\n');\n} catch (e) {\n  // logging must never fail the contact creation\n}\nreturn [{ json: entry }];"
+      },
+      "id": "code-log-01",
+      "name": "Log to /root/n8n_log.json",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"ok\", \"email\": $json.email, \"list\": $json.list } }}",
+        "options": {}
+      },
+      "id": "resp-optin-01",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Map Source -> List/Tags", "type": "main", "index": 0 }]] },
+    "Map Source -> List/Tags": { "main": [[{ "node": "Brevo: Upsert Contact", "type": "main", "index": 0 }]] },
+    "Brevo: Upsert Contact": { "main": [[{ "node": "Brevo: Send Welcome Mail 1", "type": "main", "index": 0 }]] },
+    "Brevo: Send Welcome Mail 1": { "main": [[{ "node": "Log to /root/n8n_log.json", "type": "main", "index": 0 }]] },
+    "Log to /root/n8n_log.json": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
+  }
+}
