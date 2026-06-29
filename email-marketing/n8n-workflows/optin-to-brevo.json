@@ -99,13 +99,37 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [1300, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.N8N_BASE_URL || 'http://localhost:5678' }}/webhook/welcome-followup",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"email\": $('Map Source -> List/Tags').item.json.email,\n  \"name\": $('Map Source -> List/Tags').item.json.name,\n  \"language\": $('Map Source -> List/Tags').item.json.language,\n  \"listKey\": $('Map Source -> List/Tags').item.json.listKey\n} }}",
+        "options": { "timeout": 5000 }
+      },
+      "id": "http-trigger-followup-01",
+      "name": "Trigger Welcome Sequence (Mail 2-4)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1080, 480],
+      "continueOnFail": true
     }
   ],
   "connections": {
     "Webhook": { "main": [[{ "node": "Map Source -> List/Tags", "type": "main", "index": 0 }]] },
     "Map Source -> List/Tags": { "main": [[{ "node": "Brevo: Upsert Contact", "type": "main", "index": 0 }]] },
     "Brevo: Upsert Contact": { "main": [[{ "node": "Brevo: Send Welcome Mail 1", "type": "main", "index": 0 }]] },
-    "Brevo: Send Welcome Mail 1": { "main": [[{ "node": "Log to /root/n8n_log.json", "type": "main", "index": 0 }]] },
+    "Brevo: Send Welcome Mail 1": {
+      "main": [
+        [
+          { "node": "Log to /root/n8n_log.json", "type": "main", "index": 0 },
+          { "node": "Trigger Welcome Sequence (Mail 2-4)", "type": "main", "index": 0 }
+        ]
+      ]
+    },
     "Log to /root/n8n_log.json": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
   }
 }

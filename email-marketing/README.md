@@ -18,10 +18,11 @@ werden — sie können nicht aus diesem Repo heraus automatisiert werden
 | [`docs/BREVO_SETUP.md`](docs/BREVO_SETUP.md) | Task 1 — Account, Domain-Auth, DKIM/SPF/DMARC, Sender |
 | [`docs/BREVO_LISTS_TAGS.md`](docs/BREVO_LISTS_TAGS.md) | Task 2 — Listen, Contact-Attribute ("Tags"), Segmente |
 | [`docs/WELCOME_SEQUENCES.md`](docs/WELCOME_SEQUENCES.md) | Task 3 — 4-Mail-Sequenzen DE/EN für beide Listen |
-| [`n8n-workflows/optin-to-brevo.json`](n8n-workflows/optin-to-brevo.json) | Task 4 — Opt-in-Webhook → Brevo |
+| [`n8n-workflows/optin-to-brevo.json`](n8n-workflows/optin-to-brevo.json) | Task 4 — Opt-in-Webhook → Brevo, triggert Welcome-Sequence-Followup |
+| [`n8n-workflows/welcome-sequence-followup.json`](n8n-workflows/welcome-sequence-followup.json) | Task 3/4 — Mail 2-4 Delay-Sequenz (ersetzt Brevo-Automation, die keine Creation-API hat) |
 | [`n8n-workflows/abandoned-cart-followup.json`](n8n-workflows/abandoned-cart-followup.json) | Task 5 — Abandoned-Cart-Webhook → Delay → Reminder/Discount |
 | [`docs/N8N_DEPLOYMENT.md`](docs/N8N_DEPLOYMENT.md) | Task 6 — ENV-Vars, Docker Compose, Credential-Setup, Webhook-URLs |
-| [`deploy-email-workflows.sh`](deploy-email-workflows.sh) | Import-Skript für beide Workflows (folgt dem Pattern aus `deploy.sh`) |
+| [`deploy-email-workflows.sh`](deploy-email-workflows.sh) | Import-Skript für alle drei Workflows (folgt dem Pattern aus `deploy.sh`) |
 
 ## Reihenfolge
 

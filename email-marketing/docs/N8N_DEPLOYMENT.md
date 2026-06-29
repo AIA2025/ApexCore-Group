@@ -25,6 +25,25 @@ BREVO_TPL_ECOM_EN=10
 BREVO_TPL_GENERAL_DE=
 BREVO_TPL_GENERAL_EN=
 
+# Brevo Template IDs Mail 2-4 (für welcome-sequence-followup.json, alle
+# 16 Templates bereits live angelegt am 29-06-2026, siehe docs/WELCOME_SEQUENCES.md)
+BREVO_TPL_DIGITAL_M2_DE=3
+BREVO_TPL_DIGITAL_M2_EN=4
+BREVO_TPL_DIGITAL_M3_DE=5
+BREVO_TPL_DIGITAL_M3_EN=6
+BREVO_TPL_DIGITAL_M4_DE=7
+BREVO_TPL_DIGITAL_M4_EN=8
+BREVO_TPL_ECOM_M2_DE=11
+BREVO_TPL_ECOM_M2_EN=12
+BREVO_TPL_ECOM_M3_DE=13
+BREVO_TPL_ECOM_M3_EN=14
+BREVO_TPL_ECOM_M4_DE=15
+BREVO_TPL_ECOM_M4_EN=16
+
+# Basis-URL der n8n-Instanz selbst (für den internen Aufruf
+# optin-to-brevo -> welcome-sequence-followup, siehe Abschnitt 7)
+N8N_BASE_URL=http://localhost:5678
+
 # Abandoned Cart Templates (noch nicht angelegt — es gibt noch keine
 # Cart-Reminder/Discount-Copy in docs/WELCOME_SEQUENCES.md)
 BREVO_TPL_CART_REMINDER=
@@ -78,9 +97,9 @@ Execution-Daten.
 | Header | `api-key`                       |
 | Value  | (Wert aus `BREVO_API_KEY` einfügen) |
 
-Diese Credential wird von beiden importierten Workflows
-(`optin-to-brevo`, `abandoned-cart-followup`) für alle Brevo-HTTP-Request-
-Nodes genutzt.
+Diese Credential wird von allen drei importierten Workflows
+(`optin-to-brevo`, `welcome-sequence-followup`, `abandoned-cart-followup`)
+für alle Brevo-HTTP-Request-Nodes genutzt.
 
 ## 4. Workflows importieren
 
@@ -103,6 +122,7 @@ n8n-UI:
 | Workflow                  | Methode | Pfad                                    |
 |----------------------------|---------|------------------------------------------|
 | Opt-in → Brevo             | POST    | `https://n8n.apexcore.group/webhook/optin` |
+| Welcome Sequence Followup (Mail 2-4) | POST | `https://n8n.apexcore.group/webhook/welcome-followup` (intern, siehe Abschnitt 7) |
 | Abandoned Cart Follow-up   | POST    | `https://n8n.apexcore.group/webhook/cart-abandon` |
 
 ### Beispiel-Requests
@@ -134,10 +154,40 @@ Beide Workflows schreiben einen JSON-Log-Eintrag pro Lauf nach Host-Pfad
 erscheint dort nicht, da der Log-Node ausschließlich nicht-sensitive Felder
 (E-Mail, Source, Liste, Timestamp) schreibt.
 
+## 7. Mail 2-4 als n8n-Workflow statt Brevo-Automation
+
+`docs/WELCOME_SEQUENCES.md` ging ursprünglich davon aus, dass die Delay-
+Sequenzen für Mail 2-4 als **Brevo Automation** (UI-only, keine
+Creation-API vorhanden) verdrahtet werden. Live-Check der Brevo-API
+(`GET /v3/automation/*`, `/v3/automations`, `/v3/marketing-automation/*`)
+bestätigt: es gibt auf diesem Plan **keinen** Endpoint, um Automations
+programmatisch anzulegen — das bleibt tatsächlich UI-only.
+
+**Lösung:** Mail 2-4 laufen stattdessen komplett innerhalb von n8n, ohne
+jeden manuellen Brevo-UI-Schritt:
+
+- `optin-to-brevo.json` ruft nach dem Versand von Mail 1 zusätzlich (parallel
+  zum Logging, nicht blockierend für die Webhook-Antwort) den eigenen
+  n8n-Endpoint `POST /webhook/welcome-followup` auf (`N8N_BASE_URL` aus
+  Schritt 1).
+- `welcome-sequence-followup.json` empfängt das, antwortet sofort
+  (`status: queued`) und läuft im Hintergrund mit `Wait`-Nodes weiter:
+  - `digital-products`: Wait 2 Tage → Mail 2 → Wait 2 Tage → Mail 3 → Wait 3 Tage → Mail 4
+  - `ecom-merch`: Wait 2 Tage → Mail 2 → Wait 3 Tage → Mail 3 → Wait 3 Tage → Mail 4
+  - `general-leads`/`vip` (keine Sequenz vorgesehen) → No-Op, kein Mail-Versand.
+- Template-IDs pro Stufe kommen aus den neuen `BREVO_TPL_*_M2/M3/M4_*`
+  ENV-Vars (Schritt 1) — alle 16 Templates existieren bereits.
+- Logging nach `/root/n8n_log.json` identisch zu den anderen beiden
+  Workflows.
+
+Damit ist die komplette 4-Mail-Sequenz für beide Listen vollständig
+automatisiert und reproduzierbar aus diesem Repo importierbar — ohne
+manuellen Brevo-Dashboard-Klick.
+
 ## Checkliste
 
-- [ ] `/root/.apexcore.env` um Brevo-ENV-Vars ergänzt
+- [ ] `/root/.apexcore.env` um Brevo-ENV-Vars ergänzt (inkl. `BREVO_TPL_*_M2/M3/M4_*` und `N8N_BASE_URL`)
 - [ ] docker-compose n8n-Service: `env_file`, `NODE_FUNCTION_ALLOW_BUILTIN`, Volume für `n8n_log.json`
 - [ ] Credential "Brevo API Key" (Header Auth) in n8n angelegt
-- [ ] Beide Workflows importiert, Credentials verknüpft, IDs geprüft, aktiviert
+- [ ] Alle drei Workflows importiert (`optin-to-brevo`, `welcome-sequence-followup`, `abandoned-cart-followup`), Credentials verknüpft, IDs geprüft, aktiviert
 - [ ] Webhook-URLs getestet (curl-Beispiele oben)

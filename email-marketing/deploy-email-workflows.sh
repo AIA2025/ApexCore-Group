@@ -98,12 +98,14 @@ PYEOF
 }
 
 import_workflow "$SCRIPT_DIR/n8n-workflows/optin-to-brevo.json"
+import_workflow "$SCRIPT_DIR/n8n-workflows/welcome-sequence-followup.json"
 import_workflow "$SCRIPT_DIR/n8n-workflows/abandoned-cart-followup.json"
 
 echo ""
 echo "▶ Webhook-URLs (nach Aktivierung der Workflows):"
-echo "  Opt-in:          $N8N/webhook/optin"
-echo "  Abandoned Cart:  $N8N/webhook/cart-abandon"
+echo "  Opt-in:            $N8N/webhook/optin"
+echo "  Welcome Followup:  $N8N/webhook/welcome-followup  (wird intern vom Opt-in-Workflow aufgerufen)"
+echo "  Abandoned Cart:    $N8N/webhook/cart-abandon"
 echo ""
 echo "⚠️  Vor dem Aktivieren prüfen:"
 echo "  - Brevo-Listen-IDs in den ENV-Vars BREVO_LIST_* gesetzt (docs/N8N_DEPLOYMENT.md)"

@@ -19,12 +19,14 @@ verzweigt per `IF LANGUAGE = DE` auf das passende Template.
 | `ecom-merch` Mail 3 | 13 | 14 |
 | `ecom-merch` Mail 4 | 15 | 16 |
 
-Mail-1-IDs (`1, 2, 9, 10`) sind bereits in `N8N_DEPLOYMENT.md` als
-`BREVO_TPL_DIGITAL_DE/EN` und `BREVO_TPL_ECOM_DE/EN` eingetragen — diese
-triggert der n8n-Opt-in-Workflow direkt. Mails 2–4 müssen noch als
-**Automation mit Delay-Steps** in Brevo verdrahtet werden (Templates
-existieren bereits, nur die Automation-Workflows fehlen noch — Segment-/
-Automation-Erstellung ist über die Brevo-API nicht abgedeckt).
+Alle 16 Template-IDs sind in `N8N_DEPLOYMENT.md` als ENV-Vars eingetragen
+(`BREVO_TPL_DIGITAL_*`, `BREVO_TPL_ECOM_*` inkl. `_M2/M3/M4_DE/EN`). Die
+Delay-Sequenz für Mail 2–4 läuft **nicht** über Brevo Automations (dafür
+gibt es nachweislich keine Creation-API auf diesem Plan — geprüft via
+`GET /v3/automation*`), sondern vollständig über den neuen n8n-Workflow
+`welcome-sequence-followup.json`, den `optin-to-brevo.json` nach Mail 1
+automatisch triggert. Siehe `N8N_DEPLOYMENT.md` Abschnitt 7. Damit ist die
+komplette 4-Mail-Sequenz ohne manuellen Brevo-UI-Schritt einsatzbereit.
 
 **Offen:**
 - Aktuell sind alle Templates auf Sender `marketing@apexcore.group`
