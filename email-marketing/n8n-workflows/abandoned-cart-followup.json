@@ -1,0 +1,240 @@
+{
+  "name": "ApexCore - Abandoned Cart Follow-up",
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cart-abandon",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "wh-cart-01",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [180, 320],
+      "webhookId": "apexcore-cart-abandon"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"queued\", \"email\": $json.body.email } }}",
+        "options": {}
+      },
+      "id": "resp-immediate-01",
+      "name": "Respond Immediately",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [180, 520]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nreturn [{\n  json: {\n    email: (body.email || '').toLowerCase().trim(),\n    productName: body.product_name || '',\n    cartUrl: body.cart_url || ''\n  }\n}];"
+      },
+      "id": "code-extract-01",
+      "name": "Extract Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 320]
+    },
+    {
+      "parameters": {
+        "amount": 1,
+        "unit": "hours"
+      },
+      "id": "wait-1h-01",
+      "name": "Wait 1h",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [620, 320],
+      "webhookId": "apexcore-cart-wait-1h"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.brevo.com/v3/contacts/{{ encodeURIComponent($('Extract Payload').item.json.email) }}",
+        "options": {}
+      },
+      "id": "http-check1-01",
+      "name": "Brevo: Get Contact (1)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [840, 320],
+      "credentials": {
+        "httpHeaderAuth": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo API Key" }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.attributes && $json.attributes.PURCHASED }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-purchased1-01",
+      "name": "Already Purchased?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1060, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.brevo.com/v3/smtp/email",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [ { "name": "Content-Type", "value": "application/json" } ] },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"templateId\": ($('Brevo: Get Contact (1)').item.json.attributes && $('Brevo: Get Contact (1)').item.json.attributes.LANGUAGE === 'DE') ? 17 : 18,\n  \"to\": [ { \"email\": $('Extract Payload').item.json.email } ],\n  \"params\": {\n    \"PRODUCT_NAME\": $('Extract Payload').item.json.productName,\n    \"CART_URL\": $('Extract Payload').item.json.cartUrl\n  }\n} }}",
+        "options": {}
+      },
+      "id": "http-reminder-01",
+      "name": "Brevo: Send Reminder Mail",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1280, 220],
+      "credentials": {
+        "httpHeaderAuth": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo API Key" }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "amount": 24,
+        "unit": "hours"
+      },
+      "id": "wait-24h-01",
+      "name": "Wait 24h",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1500, 220],
+      "webhookId": "apexcore-cart-wait-24h"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.brevo.com/v3/contacts/{{ encodeURIComponent($('Extract Payload').item.json.email) }}",
+        "options": {}
+      },
+      "id": "http-check2-01",
+      "name": "Brevo: Get Contact (2)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1720, 220],
+      "credentials": {
+        "httpHeaderAuth": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo API Key" }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.attributes && $json.attributes.PURCHASED }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-purchased2-01",
+      "name": "Already Purchased? (2)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1940, 220]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.brevo.com/v3/smtp/email",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [ { "name": "Content-Type", "value": "application/json" } ] },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"templateId\": ($('Brevo: Get Contact (2)').item.json.attributes && $('Brevo: Get Contact (2)').item.json.attributes.LANGUAGE === 'DE') ? 19 : 20,\n  \"to\": [ { \"email\": $('Extract Payload').item.json.email } ],\n  \"params\": {\n    \"PRODUCT_NAME\": $('Extract Payload').item.json.productName,\n    \"CART_URL\": $('Extract Payload').item.json.cartUrl,\n    \"DISCOUNT_CODE\": \"COMEBACK10\"\n  }\n} }}",
+        "options": {}
+      },
+      "id": "http-discount-01",
+      "name": "Brevo: Send Discount Mail",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2160, 120],
+      "credentials": {
+        "httpHeaderAuth": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo API Key" }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const entry = {\n  timestamp: new Date().toISOString(),\n  workflow: 'abandoned-cart-followup',\n  email: $('Extract Payload').item.json.email,\n  productName: $('Extract Payload').item.json.productName,\n  outcome: $json.outcome || 'processed'\n};\n// n8n Cloud has no host filesystem access; rely on this workflow's\n// execution history (Executions tab) instead of writing to a local file.\nreturn [{ json: entry }];"
+      },
+      "id": "code-log-cart-01",
+      "name": "Log Cart Outcome",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2380, 320]
+    },
+    {
+      "parameters": {},
+      "id": "noop-purchased1-01",
+      "name": "Stop - Already Purchased",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1280, 420]
+    },
+    {
+      "parameters": {},
+      "id": "noop-purchased2-01",
+      "name": "Stop - Already Purchased (2)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [2160, 420]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          { "node": "Respond Immediately", "type": "main", "index": 0 },
+          { "node": "Extract Payload", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Extract Payload": { "main": [[{ "node": "Wait 1h", "type": "main", "index": 0 }]] },
+    "Wait 1h": { "main": [[{ "node": "Brevo: Get Contact (1)", "type": "main", "index": 0 }]] },
+    "Brevo: Get Contact (1)": { "main": [[{ "node": "Already Purchased?", "type": "main", "index": 0 }]] },
+    "Already Purchased?": {
+      "main": [
+        [{ "node": "Stop - Already Purchased", "type": "main", "index": 0 }],
+        [{ "node": "Brevo: Send Reminder Mail", "type": "main", "index": 0 }]
+      ]
+    },
+    "Brevo: Send Reminder Mail": { "main": [[{ "node": "Wait 24h", "type": "main", "index": 0 }]] },
+    "Wait 24h": { "main": [[{ "node": "Brevo: Get Contact (2)", "type": "main", "index": 0 }]] },
+    "Brevo: Get Contact (2)": { "main": [[{ "node": "Already Purchased? (2)", "type": "main", "index": 0 }]] },
+    "Already Purchased? (2)": {
+      "main": [
+        [{ "node": "Stop - Already Purchased (2)", "type": "main", "index": 0 }],
+        [{ "node": "Brevo: Send Discount Mail", "type": "main", "index": 0 }]
+      ]
+    },
+    "Brevo: Send Discount Mail": { "main": [[{ "node": "Log Cart Outcome", "type": "main", "index": 0 }]] }
+  }
+}

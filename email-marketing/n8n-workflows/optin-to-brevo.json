@@ -1,0 +1,135 @@
+{
+  "name": "ApexCore - Opt-in to Brevo",
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "optin",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "wh-optin-01",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "apexcore-optin"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst email = (body.email || '').toLowerCase().trim();\nconst name = body.name || '';\nconst source = body.source || 'unknown';\nconst productType = body.product_type || 'unknown';\nconst language = (body.language || 'EN').toUpperCase();\n\nif (!email) {\n  throw new Error('email is required');\n}\n\n// n8n Cloud denies $env access inside Code nodes (\"access to env vars\n// denied\"), so the Brevo list/template IDs (already live, see\n// docs/BREVO_LISTS_TAGS.md / docs/WELCOME_SEQUENCES.md) are hardcoded here.\nconst LIST_IDS = {\n  'digital-products': 4,\n  'ecom-merch': 5,\n  'general-leads': 6,\n  'vip': 7\n};\n\nfunction resolveListKey(source, productType) {\n  const s = (source || '').toLowerCase();\n  const p = (productType || '').toLowerCase();\n  if (p.includes('gumroad') || p.includes('digital') || s.includes('gumroad') || s.includes('waitlist')) {\n    return 'digital-products';\n  }\n  if (p.includes('merch') || p.includes('shop') || s.includes('shop') || s.includes('ecom')) {\n    return 'ecom-merch';\n  }\n  return 'general-leads';\n}\n\nconst listKey = resolveListKey(source, productType);\nconst listId = LIST_IDS[listKey];\n\n// Welcome-sequence template per list + language, see docs/WELCOME_SEQUENCES.md\nconst TEMPLATE_IDS = {\n  'digital-products': { DE: 1, EN: 2 },\n  'ecom-merch': { DE: 9, EN: 10 },\n  'general-leads': { DE: 0, EN: 0 }\n};\nconst lang = (language === 'DE') ? 'DE' : 'EN';\nconst templateId = (TEMPLATE_IDS[listKey] || {})[lang] || 0;\n\nreturn [{\n  json: {\n    email,\n    name,\n    source,\n    productType,\n    language: lang,\n    listKey,\n    listId,\n    templateId\n  }\n}];"
+      },
+      "id": "code-map-01",
+      "name": "Map Source -> List/Tags",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.brevo.com/v3/contacts",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"email\": $json.email,\n  \"attributes\": {\n    \"FIRSTNAME\": $json.name,\n    \"SOURCE\": $json.source,\n    \"PRODUCT_TYPE\": $json.productType,\n    \"LANGUAGE\": $json.language\n  },\n  \"listIds\": [ $json.listId ],\n  \"updateEnabled\": true\n} }}",
+        "options": {}
+      },
+      "id": "http-upsert-01",
+      "name": "Brevo: Upsert Contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [640, 300],
+      "credentials": {
+        "httpHeaderAuth": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo API Key" }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.brevo.com/v3/smtp/email",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"templateId\": $('Map Source -> List/Tags').item.json.templateId,\n  \"to\": [ { \"email\": $('Map Source -> List/Tags').item.json.email, \"name\": $('Map Source -> List/Tags').item.json.name } ],\n  \"params\": {\n    \"NAME\": $('Map Source -> List/Tags').item.json.name,\n    \"SOURCE\": $('Map Source -> List/Tags').item.json.source\n  }\n} }}",
+        "options": {}
+      },
+      "id": "http-welcome-01",
+      "name": "Brevo: Send Welcome Mail 1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [860, 300],
+      "credentials": {
+        "httpHeaderAuth": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo API Key" }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $('Map Source -> List/Tags').item.json;\nconst entry = {\n  timestamp: new Date().toISOString(),\n  workflow: 'optin-to-brevo',\n  email: data.email,\n  source: data.source,\n  productType: data.productType,\n  language: data.language,\n  list: data.listKey,\n  listId: data.listId\n};\n// n8n Cloud has no host filesystem access; rely on this workflow's\n// execution history (Executions tab) instead of writing to a local file.\nreturn [{ json: entry }];"
+      },
+      "id": "code-log-01",
+      "name": "Log Opt-in Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"ok\", \"email\": $json.email, \"list\": $json.list } }}",
+        "options": {}
+      },
+      "id": "resp-optin-01",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1300, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://apexcoregroup.app.n8n.cloud/webhook/welcome-followup",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"email\": $('Map Source -> List/Tags').item.json.email,\n  \"name\": $('Map Source -> List/Tags').item.json.name,\n  \"language\": $('Map Source -> List/Tags').item.json.language,\n  \"listKey\": $('Map Source -> List/Tags').item.json.listKey\n} }}",
+        "options": { "timeout": 5000 }
+      },
+      "id": "http-trigger-followup-01",
+      "name": "Trigger Welcome Sequence (Mail 2-4)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1080, 480],
+      "continueOnFail": true
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Map Source -> List/Tags", "type": "main", "index": 0 }]] },
+    "Map Source -> List/Tags": { "main": [[{ "node": "Brevo: Upsert Contact", "type": "main", "index": 0 }]] },
+    "Brevo: Upsert Contact": { "main": [[{ "node": "Brevo: Send Welcome Mail 1", "type": "main", "index": 0 }]] },
+    "Brevo: Send Welcome Mail 1": {
+      "main": [
+        [
+          { "node": "Log Opt-in Result", "type": "main", "index": 0 },
+          { "node": "Trigger Welcome Sequence (Mail 2-4)", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Log Opt-in Result": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
+  }
+}

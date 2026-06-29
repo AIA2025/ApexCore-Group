@@ -1,0 +1,201 @@
+{
+  "name": "ApexCore - Welcome Sequence Followup (Mail 2-4)",
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "welcome-followup",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "wh-followup-01",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 400],
+      "webhookId": "apexcore-welcome-followup"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"queued\" } }}",
+        "options": {}
+      },
+      "id": "resp-followup-01",
+      "name": "Respond Immediately",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [420, 250]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst email = (body.email || '').toLowerCase().trim();\nconst name = body.name || '';\nconst language = (body.language || 'EN').toUpperCase();\nconst listKey = body.listKey || '';\n\nif (!email) {\n  throw new Error('email is required');\n}\n\nconst lang = (language === 'DE') ? 'DE' : 'EN';\n\n// Delay schedule per list, see docs/WELCOME_SEQUENCES.md\n// digital-products: Day 0 / 2 / 4 / 7  -> gaps after mail 1: 2, 2, 3 days\n// ecom-merch:       Day 0 / 2 / 5 / 8  -> gaps after mail 1: 2, 3, 3 days\n// n8n Cloud denies $env access inside Code nodes (\"access to env vars\n// denied\"), so the template IDs (already live, see docs/WELCOME_SEQUENCES.md)\n// are hardcoded here.\nconst SEQUENCES = {\n  'digital-products': {\n    gaps: [2, 2, 3],\n    templates: {\n      DE: [3, 5, 7],\n      EN: [4, 6, 8]\n    }\n  },\n  'ecom-merch': {\n    gaps: [2, 3, 3],\n    templates: {\n      DE: [11, 13, 15],\n      EN: [12, 14, 16]\n    }\n  }\n};\n\nconst seq = SEQUENCES[listKey];\n\nreturn [{\n  json: {\n    email,\n    name,\n    language: lang,\n    listKey,\n    hasSequence: !!seq,\n    gapDays: seq ? seq.gaps : [],\n    templateIds: seq ? seq.templates[lang] : []\n  }\n}];"
+      },
+      "id": "code-resolve-01",
+      "name": "Resolve Sequence",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 500]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.hasSequence }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-has-sequence-01",
+      "name": "Has Sequence?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [640, 500]
+    },
+    {
+      "parameters": {},
+      "id": "noop-skip-01",
+      "name": "No Sequence For List",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [860, 620]
+    },
+    {
+      "parameters": { "amount": "={{ $json.gapDays[0] }}", "unit": "days" },
+      "id": "wait-m2-01",
+      "name": "Wait Until Mail 2",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [860, 420]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.brevo.com/v3/smtp/email",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [ { "name": "Content-Type", "value": "application/json" } ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"templateId\": $json.templateIds[0],\n  \"to\": [ { \"email\": $json.email, \"name\": $json.name } ],\n  \"params\": { \"NAME\": $json.name }\n} }}",
+        "options": {}
+      },
+      "id": "http-mail2-01",
+      "name": "Brevo: Send Mail 2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1080, 420],
+      "credentials": {
+        "httpHeaderAuth": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo API Key" }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": { "amount": "={{ $('Resolve Sequence').item.json.gapDays[1] }}", "unit": "days" },
+      "id": "wait-m3-01",
+      "name": "Wait Until Mail 3",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1300, 420]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.brevo.com/v3/smtp/email",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [ { "name": "Content-Type", "value": "application/json" } ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"templateId\": $('Resolve Sequence').item.json.templateIds[1],\n  \"to\": [ { \"email\": $('Resolve Sequence').item.json.email, \"name\": $('Resolve Sequence').item.json.name } ],\n  \"params\": { \"NAME\": $('Resolve Sequence').item.json.name }\n} }}",
+        "options": {}
+      },
+      "id": "http-mail3-01",
+      "name": "Brevo: Send Mail 3",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1520, 420],
+      "credentials": {
+        "httpHeaderAuth": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo API Key" }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": { "amount": "={{ $('Resolve Sequence').item.json.gapDays[2] }}", "unit": "days" },
+      "id": "wait-m4-01",
+      "name": "Wait Until Mail 4",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1740, 420]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.brevo.com/v3/smtp/email",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [ { "name": "Content-Type", "value": "application/json" } ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"templateId\": $('Resolve Sequence').item.json.templateIds[2],\n  \"to\": [ { \"email\": $('Resolve Sequence').item.json.email, \"name\": $('Resolve Sequence').item.json.name } ],\n  \"params\": { \"NAME\": $('Resolve Sequence').item.json.name }\n} }}",
+        "options": {}
+      },
+      "id": "http-mail4-01",
+      "name": "Brevo: Send Mail 4",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1960, 420],
+      "credentials": {
+        "httpHeaderAuth": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo API Key" }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $('Resolve Sequence').item.json;\nconst entry = {\n  timestamp: new Date().toISOString(),\n  workflow: 'welcome-sequence-followup',\n  email: data.email,\n  list: data.listKey,\n  language: data.language,\n  mailsSent: ['mail2', 'mail3', 'mail4']\n};\n// n8n Cloud has no host filesystem access; rely on this workflow's\n// execution history (Executions tab) instead of writing to a local file.\nreturn [{ json: entry }];"
+      },
+      "id": "code-log-followup-01",
+      "name": "Log Sequence Completion",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2180, 420]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          { "node": "Respond Immediately", "type": "main", "index": 0 },
+          { "node": "Resolve Sequence", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Resolve Sequence": { "main": [[{ "node": "Has Sequence?", "type": "main", "index": 0 }]] },
+    "Has Sequence?": {
+      "main": [
+        [{ "node": "Wait Until Mail 2", "type": "main", "index": 0 }],
+        [{ "node": "No Sequence For List", "type": "main", "index": 0 }]
+      ]
+    },
+    "Wait Until Mail 2": { "main": [[{ "node": "Brevo: Send Mail 2", "type": "main", "index": 0 }]] },
+    "Brevo: Send Mail 2": { "main": [[{ "node": "Wait Until Mail 3", "type": "main", "index": 0 }]] },
+    "Wait Until Mail 3": { "main": [[{ "node": "Brevo: Send Mail 3", "type": "main", "index": 0 }]] },
+    "Brevo: Send Mail 3": { "main": [[{ "node": "Wait Until Mail 4", "type": "main", "index": 0 }]] },
+    "Wait Until Mail 4": { "main": [[{ "node": "Brevo: Send Mail 4", "type": "main", "index": 0 }]] },
+    "Brevo: Send Mail 4": { "main": [[{ "node": "Log Sequence Completion", "type": "main", "index": 0 }]] }
+  }
+}
