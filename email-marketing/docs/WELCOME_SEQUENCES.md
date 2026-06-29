@@ -6,10 +6,36 @@ Delay-Steps (Tag 0 / 2 / 4 / 7 bzw. 0 / 2 / 5 / 8). Jede Mail existiert als
 eigenes **Template** (Transactional → Templates) in DE und EN; die Automation
 verzweigt per `IF LANGUAGE = DE` auf das passende Template.
 
-Template-IDs nach dem Anlegen in `/root/.apexcore.env` eintragen:
-`BREVO_TPL_DIGITAL_DE`, `BREVO_TPL_DIGITAL_EN`, `BREVO_TPL_ECOM_DE`,
-`BREVO_TPL_ECOM_EN` (Mail 1 je Sequenz — wird vom n8n-Workflow getriggert;
-Mails 2–4 laufen rein in der Brevo-Automation über Delay-Steps).
+## Status: alle 16 Templates live angelegt (29-06-2026, via API)
+
+| Mail | DE Template-ID | EN Template-ID |
+|---|---|---|
+| `digital-products` Mail 1 | 1 | 2 |
+| `digital-products` Mail 2 | 3 | 4 |
+| `digital-products` Mail 3 | 5 | 6 |
+| `digital-products` Mail 4 | 7 | 8 |
+| `ecom-merch` Mail 1 | 9 | 10 |
+| `ecom-merch` Mail 2 | 11 | 12 |
+| `ecom-merch` Mail 3 | 13 | 14 |
+| `ecom-merch` Mail 4 | 15 | 16 |
+
+Mail-1-IDs (`1, 2, 9, 10`) sind bereits in `N8N_DEPLOYMENT.md` als
+`BREVO_TPL_DIGITAL_DE/EN` und `BREVO_TPL_ECOM_DE/EN` eingetragen — diese
+triggert der n8n-Opt-in-Workflow direkt. Mails 2–4 müssen noch als
+**Automation mit Delay-Steps** in Brevo verdrahtet werden (Templates
+existieren bereits, nur die Automation-Workflows fehlen noch — Segment-/
+Automation-Erstellung ist über die Brevo-API nicht abgedeckt).
+
+**Offen:**
+- Aktuell sind alle Templates auf Sender `marketing@apexcore.group`
+  gesetzt (einziger aktiver Sender). Sobald `noreply@apexcore.group` nach
+  DNS-Authentifizierung aktiv ist (siehe `BREVO_SETUP.md`), Sender in jedem
+  Template auf `noreply@apexcore.group` umstellen.
+- Platzhalter-Inhalte (Story, Testimonials, Produktnamen) sind noch
+  generisch — siehe Hinweise unten.
+- `general-leads` und `vip` haben laut Task-Vorgabe keine eigene
+  4-Mail-Sequenz; `BREVO_TPL_GENERAL_*` in `N8N_DEPLOYMENT.md` bleibt daher
+  bewusst leer, bis dafür Content vorgegeben wird.
 
 ---
 

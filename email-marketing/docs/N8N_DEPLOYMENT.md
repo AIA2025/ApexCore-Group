@@ -16,15 +16,17 @@ BREVO_LIST_ECOM_MERCH=5
 BREVO_LIST_GENERAL_LEADS=6
 BREVO_LIST_VIP=7
 
-# Brevo Template IDs (Mail 1 je Sequenz/Sprache, siehe docs/WELCOME_SEQUENCES.md)
-BREVO_TPL_DIGITAL_DE=
-BREVO_TPL_DIGITAL_EN=
-BREVO_TPL_ECOM_DE=
-BREVO_TPL_ECOM_EN=
+# Brevo Template IDs (Mail 1 je Sequenz/Sprache, bereits live angelegt
+# am 29-06-2026, siehe docs/WELCOME_SEQUENCES.md)
+BREVO_TPL_DIGITAL_DE=1
+BREVO_TPL_DIGITAL_EN=2
+BREVO_TPL_ECOM_DE=9
+BREVO_TPL_ECOM_EN=10
 BREVO_TPL_GENERAL_DE=
 BREVO_TPL_GENERAL_EN=
 
-# Abandoned Cart Templates
+# Abandoned Cart Templates (noch nicht angelegt — es gibt noch keine
+# Cart-Reminder/Discount-Copy in docs/WELCOME_SEQUENCES.md)
 BREVO_TPL_CART_REMINDER=
 BREVO_TPL_CART_DISCOUNT=
 CART_DISCOUNT_CODE=COMEBACK10
