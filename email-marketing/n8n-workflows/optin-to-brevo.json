@@ -29,52 +29,48 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "https://api.brevo.com/v3/contacts",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            { "name": "Content-Type", "value": "application/json" }
+        "resource": "contact",
+        "operation": "upsert",
+        "email": "={{ $json.email }}",
+        "upsertAttributes": {
+          "upsertAttributesValues": [
+            { "fieldName": "FIRSTNAME", "fieldValue": "={{ $json.name }}" },
+            { "fieldName": "SOURCE", "fieldValue": "={{ $json.source }}" },
+            { "fieldName": "PRODUCT_TYPE", "fieldValue": "={{ $json.productType }}" },
+            { "fieldName": "LANGUAGE", "fieldValue": "={{ $json.language }}" }
           ]
-        },
-        "sendBody": true,
-        "contentType": "json",
-        "specifyBody": "json",
-        "jsonBody": "={{ {\n  \"email\": $json.email,\n  \"attributes\": {\n    \"FIRSTNAME\": $json.name,\n    \"SOURCE\": $json.source,\n    \"PRODUCT_TYPE\": $json.productType,\n    \"LANGUAGE\": $json.language\n  },\n  \"listIds\": [ $json.listId ],\n  \"updateEnabled\": true\n} }}",
-        "options": {}
+        }
       },
       "id": "http-upsert-01",
       "name": "Brevo: Upsert Contact",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
+      "type": "n8n-nodes-base.sendInBlue",
+      "typeVersion": 1,
       "position": [640, 300],
       "credentials": {
-        "httpHeaderAuth": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo API Key" }
+        "sendInBlueApi": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo account" }
       }
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "https://api.brevo.com/v3/smtp/email",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            { "name": "Content-Type", "value": "application/json" }
-          ]
-        },
-        "sendBody": true,
-        "contentType": "json",
-        "specifyBody": "json",
-        "jsonBody": "={{ {\n  \"templateId\": $('Map Source -> List/Tags').item.json.templateId,\n  \"to\": [ { \"email\": $('Map Source -> List/Tags').item.json.email, \"name\": $('Map Source -> List/Tags').item.json.name } ],\n  \"params\": {\n    \"NAME\": $('Map Source -> List/Tags').item.json.name,\n    \"SOURCE\": $('Map Source -> List/Tags').item.json.source\n  }\n} }}",
-        "options": {}
+        "resource": "email",
+        "operation": "sendTemplate",
+        "templateId": "={{ String($('Map Source -> List/Tags').item.json.templateId) }}",
+        "receipients": "={{ $('Map Source -> List/Tags').item.json.email }}",
+        "additionalFields": {
+          "templateParameters": {
+            "parameterValues": {
+              "parameters": "={{ 'NAME=' + ($('Map Source -> List/Tags').item.json.name || '') + ',SOURCE=' + ($('Map Source -> List/Tags').item.json.source || '') }}"
+            }
+          }
+        }
       },
       "id": "http-welcome-01",
       "name": "Brevo: Send Welcome Mail 1",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
+      "type": "n8n-nodes-base.sendInBlue",
+      "typeVersion": 1,
       "position": [860, 300],
       "credentials": {
-        "httpHeaderAuth": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo API Key" }
+        "sendInBlueApi": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo account" }
       },
       "continueOnFail": true
     },

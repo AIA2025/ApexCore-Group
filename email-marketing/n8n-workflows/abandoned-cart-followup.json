@@ -53,17 +53,17 @@
     },
     {
       "parameters": {
-        "method": "GET",
-        "url": "=https://api.brevo.com/v3/contacts/{{ encodeURIComponent($('Extract Payload').item.json.email) }}",
-        "options": {}
+        "resource": "contact",
+        "operation": "get",
+        "identifier": "={{ $('Extract Payload').item.json.email }}"
       },
       "id": "http-check1-01",
       "name": "Brevo: Get Contact (1)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
+      "type": "n8n-nodes-base.sendInBlue",
+      "typeVersion": 1,
       "position": [840, 320],
       "credentials": {
-        "httpHeaderAuth": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo API Key" }
+        "sendInBlueApi": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo account" }
       },
       "continueOnFail": true
     },
@@ -90,23 +90,25 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "https://api.brevo.com/v3/smtp/email",
-        "sendHeaders": true,
-        "headerParameters": { "parameters": [ { "name": "Content-Type", "value": "application/json" } ] },
-        "sendBody": true,
-        "contentType": "json",
-        "specifyBody": "json",
-        "jsonBody": "={{ {\n  \"templateId\": ($('Brevo: Get Contact (1)').item.json.attributes && $('Brevo: Get Contact (1)').item.json.attributes.LANGUAGE === 'DE') ? 17 : 18,\n  \"to\": [ { \"email\": $('Extract Payload').item.json.email } ],\n  \"params\": {\n    \"PRODUCT_NAME\": $('Extract Payload').item.json.productName,\n    \"CART_URL\": $('Extract Payload').item.json.cartUrl\n  }\n} }}",
-        "options": {}
+        "resource": "email",
+        "operation": "sendTemplate",
+        "templateId": "={{ ($('Brevo: Get Contact (1)').item.json.attributes && $('Brevo: Get Contact (1)').item.json.attributes.LANGUAGE === 'DE') ? '17' : '18' }}",
+        "receipients": "={{ $('Extract Payload').item.json.email }}",
+        "additionalFields": {
+          "templateParameters": {
+            "parameterValues": {
+              "parameters": "={{ 'PRODUCT_NAME=' + ($('Extract Payload').item.json.productName || '') + ',CART_URL=' + ($('Extract Payload').item.json.cartUrl || '') }}"
+            }
+          }
+        }
       },
       "id": "http-reminder-01",
       "name": "Brevo: Send Reminder Mail",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
+      "type": "n8n-nodes-base.sendInBlue",
+      "typeVersion": 1,
       "position": [1280, 220],
       "credentials": {
-        "httpHeaderAuth": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo API Key" }
+        "sendInBlueApi": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo account" }
       },
       "continueOnFail": true
     },
@@ -124,17 +126,17 @@
     },
     {
       "parameters": {
-        "method": "GET",
-        "url": "=https://api.brevo.com/v3/contacts/{{ encodeURIComponent($('Extract Payload').item.json.email) }}",
-        "options": {}
+        "resource": "contact",
+        "operation": "get",
+        "identifier": "={{ $('Extract Payload').item.json.email }}"
       },
       "id": "http-check2-01",
       "name": "Brevo: Get Contact (2)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
+      "type": "n8n-nodes-base.sendInBlue",
+      "typeVersion": 1,
       "position": [1720, 220],
       "credentials": {
-        "httpHeaderAuth": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo API Key" }
+        "sendInBlueApi": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo account" }
       },
       "continueOnFail": true
     },
@@ -161,23 +163,25 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "https://api.brevo.com/v3/smtp/email",
-        "sendHeaders": true,
-        "headerParameters": { "parameters": [ { "name": "Content-Type", "value": "application/json" } ] },
-        "sendBody": true,
-        "contentType": "json",
-        "specifyBody": "json",
-        "jsonBody": "={{ {\n  \"templateId\": ($('Brevo: Get Contact (2)').item.json.attributes && $('Brevo: Get Contact (2)').item.json.attributes.LANGUAGE === 'DE') ? 19 : 20,\n  \"to\": [ { \"email\": $('Extract Payload').item.json.email } ],\n  \"params\": {\n    \"PRODUCT_NAME\": $('Extract Payload').item.json.productName,\n    \"CART_URL\": $('Extract Payload').item.json.cartUrl,\n    \"DISCOUNT_CODE\": \"COMEBACK10\"\n  }\n} }}",
-        "options": {}
+        "resource": "email",
+        "operation": "sendTemplate",
+        "templateId": "={{ ($('Brevo: Get Contact (2)').item.json.attributes && $('Brevo: Get Contact (2)').item.json.attributes.LANGUAGE === 'DE') ? '19' : '20' }}",
+        "receipients": "={{ $('Extract Payload').item.json.email }}",
+        "additionalFields": {
+          "templateParameters": {
+            "parameterValues": {
+              "parameters": "={{ 'PRODUCT_NAME=' + ($('Extract Payload').item.json.productName || '') + ',CART_URL=' + ($('Extract Payload').item.json.cartUrl || '') + ',DISCOUNT_CODE=COMEBACK10' }}"
+            }
+          }
+        }
       },
       "id": "http-discount-01",
       "name": "Brevo: Send Discount Mail",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
+      "type": "n8n-nodes-base.sendInBlue",
+      "typeVersion": 1,
       "position": [2160, 120],
       "credentials": {
-        "httpHeaderAuth": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo API Key" }
+        "sendInBlueApi": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo account" }
       },
       "continueOnFail": true
     },

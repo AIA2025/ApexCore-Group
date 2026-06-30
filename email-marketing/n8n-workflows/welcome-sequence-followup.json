@@ -78,25 +78,25 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "https://api.brevo.com/v3/smtp/email",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [ { "name": "Content-Type", "value": "application/json" } ]
-        },
-        "sendBody": true,
-        "contentType": "json",
-        "specifyBody": "json",
-        "jsonBody": "={{ {\n  \"templateId\": $json.templateIds[0],\n  \"to\": [ { \"email\": $json.email, \"name\": $json.name } ],\n  \"params\": { \"NAME\": $json.name }\n} }}",
-        "options": {}
+        "resource": "email",
+        "operation": "sendTemplate",
+        "templateId": "={{ String($json.templateIds[0]) }}",
+        "receipients": "={{ $json.email }}",
+        "additionalFields": {
+          "templateParameters": {
+            "parameterValues": {
+              "parameters": "={{ 'NAME=' + ($json.name || '') }}"
+            }
+          }
+        }
       },
       "id": "http-mail2-01",
       "name": "Brevo: Send Mail 2",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
+      "type": "n8n-nodes-base.sendInBlue",
+      "typeVersion": 1,
       "position": [1080, 420],
       "credentials": {
-        "httpHeaderAuth": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo API Key" }
+        "sendInBlueApi": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo account" }
       },
       "continueOnFail": true
     },
@@ -110,25 +110,25 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "https://api.brevo.com/v3/smtp/email",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [ { "name": "Content-Type", "value": "application/json" } ]
-        },
-        "sendBody": true,
-        "contentType": "json",
-        "specifyBody": "json",
-        "jsonBody": "={{ {\n  \"templateId\": $('Resolve Sequence').item.json.templateIds[1],\n  \"to\": [ { \"email\": $('Resolve Sequence').item.json.email, \"name\": $('Resolve Sequence').item.json.name } ],\n  \"params\": { \"NAME\": $('Resolve Sequence').item.json.name }\n} }}",
-        "options": {}
+        "resource": "email",
+        "operation": "sendTemplate",
+        "templateId": "={{ String($('Resolve Sequence').item.json.templateIds[1]) }}",
+        "receipients": "={{ $('Resolve Sequence').item.json.email }}",
+        "additionalFields": {
+          "templateParameters": {
+            "parameterValues": {
+              "parameters": "={{ 'NAME=' + ($('Resolve Sequence').item.json.name || '') }}"
+            }
+          }
+        }
       },
       "id": "http-mail3-01",
       "name": "Brevo: Send Mail 3",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
+      "type": "n8n-nodes-base.sendInBlue",
+      "typeVersion": 1,
       "position": [1520, 420],
       "credentials": {
-        "httpHeaderAuth": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo API Key" }
+        "sendInBlueApi": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo account" }
       },
       "continueOnFail": true
     },
@@ -142,25 +142,25 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "https://api.brevo.com/v3/smtp/email",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [ { "name": "Content-Type", "value": "application/json" } ]
-        },
-        "sendBody": true,
-        "contentType": "json",
-        "specifyBody": "json",
-        "jsonBody": "={{ {\n  \"templateId\": $('Resolve Sequence').item.json.templateIds[2],\n  \"to\": [ { \"email\": $('Resolve Sequence').item.json.email, \"name\": $('Resolve Sequence').item.json.name } ],\n  \"params\": { \"NAME\": $('Resolve Sequence').item.json.name }\n} }}",
-        "options": {}
+        "resource": "email",
+        "operation": "sendTemplate",
+        "templateId": "={{ String($('Resolve Sequence').item.json.templateIds[2]) }}",
+        "receipients": "={{ $('Resolve Sequence').item.json.email }}",
+        "additionalFields": {
+          "templateParameters": {
+            "parameterValues": {
+              "parameters": "={{ 'NAME=' + ($('Resolve Sequence').item.json.name || '') }}"
+            }
+          }
+        }
       },
       "id": "http-mail4-01",
       "name": "Brevo: Send Mail 4",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
+      "type": "n8n-nodes-base.sendInBlue",
+      "typeVersion": 1,
       "position": [1960, 420],
       "credentials": {
-        "httpHeaderAuth": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo API Key" }
+        "sendInBlueApi": { "id": "BREVO_CREDENTIAL_ID", "name": "Brevo account" }
       },
       "continueOnFail": true
     },
