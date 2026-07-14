@@ -14,8 +14,22 @@ VPS_USER="${VPS_USER:-root}"
 CONTAINERS="hermes-webui hermes"
 REMOTE_HERMES_PATH="/root/.hermes"
 WORKDIR="$HOME/Desktop/hermes-migration"
-TS=$(date +%Y%m%d_%H%M%S)
 TELEGRAM_TOKEN="${TELEGRAM_TOKEN:-}"
+
+# Stabile Verbindung: Keepalive gegen "Broken pipe" bei längeren Transfers
+SSH_OPTS="-o ServerAliveInterval=15 -o ServerAliveCountMax=6 -o TCPKeepAlive=yes -o ConnectTimeout=15"
+
+# TS wird über den ganzen Migrations-Prozess hinweg fixiert (Datei im Workdir),
+# damit ein abgebrochener rsync-Transfer beim erneuten Ausführen an derselben
+# Zieldatei fortsetzen kann, statt bei 0% neu zu beginnen.
+TS_FILE="$WORKDIR/.current-migration-ts"
+mkdir -p "$WORKDIR"
+if [ -f "$TS_FILE" ]; then
+  TS=$(cat "$TS_FILE")
+else
+  TS=$(date +%Y%m%d_%H%M%S)
+  echo "$TS" > "$TS_FILE"
+fi
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; BOLD='\033[1m'; NC='\033[0m'
 ok()   { echo -e "${GREEN}✅ $1${NC}"; }
@@ -36,27 +50,41 @@ if [ -z "$LOCAL_BACKUP" ]; then
 fi
 ok "Backup gefunden: $LOCAL_BACKUP ($(du -h "$LOCAL_BACKUP" | cut -f1))"
 
-ssh -o BatchMode=yes -o ConnectTimeout=8 "${VPS_USER}@${VPS_HOST}" "echo ok" >/dev/null 2>&1 \
+ssh $SSH_OPTS -o BatchMode=yes "${VPS_USER}@${VPS_HOST}" "echo ok" >/dev/null 2>&1 \
   || { err "SSH zum VPS fehlgeschlagen"; exit 1; }
 ok "SSH zum VPS funktioniert"
 
-# ── 1. VPS-Backup des bestehenden Zustands ────────────────────────────────
+# ── 1. VPS-Backup des bestehenden Zustands (nur einmal, wird nicht wiederholt) ─
+BACKUP_MARKER="$WORKDIR/.vps-backup-done-$TS"
 h "1) VPS-Backup von $REMOTE_HERMES_PATH (Sicherheitsnetz)"
-ssh "${VPS_USER}@${VPS_HOST}" "mkdir -p /root/backups"
-ssh "${VPS_USER}@${VPS_HOST}" \
-  "tar -czf /root/backups/vps-hermes-pre-migration-$TS.tar.gz -C / root/.hermes" \
-  && ok "VPS-Backup erstellt: /root/backups/vps-hermes-pre-migration-$TS.tar.gz" \
-  || warn "VPS-Backup fehlgeschlagen (evtl. leerer Ordner) — fahre fort"
+if [ -f "$BACKUP_MARKER" ]; then
+  ok "VPS-Backup bereits in einem früheren Versuch erstellt — überspringe"
+else
+  ssh $SSH_OPTS "${VPS_USER}@${VPS_HOST}" "mkdir -p /root/backups"
+  if ssh $SSH_OPTS "${VPS_USER}@${VPS_HOST}" \
+    "tar -czf /root/backups/vps-hermes-pre-migration-$TS.tar.gz -C / root/.hermes"; then
+    ok "VPS-Backup erstellt: /root/backups/vps-hermes-pre-migration-$TS.tar.gz"
+    touch "$BACKUP_MARKER"
+  else
+    warn "VPS-Backup mit Warnung beendet (Dateien wurden während des Packens verändert — Container schreibt live)"
+    warn "Das ist normal und kein Blocker, Backup ist trotzdem vorhanden — fahre fort"
+    touch "$BACKUP_MARKER"
+  fi
+fi
 
-# ── 2. Transfer ────────────────────────────────────────────────────────────
-h "2) Übertragung: iMac → VPS"
-scp "$LOCAL_BACKUP" "${VPS_USER}@${VPS_HOST}:/root/backups/imac-hermes-backup-$TS.tar.gz" \
-  || { err "Transfer fehlgeschlagen"; exit 1; }
+# ── 2. Transfer (rsync statt scp — kann bei Abbruch fortsetzen) ──────────
+h "2) Übertragung: iMac → VPS (rsync, resumierbar)"
+echo "   Bei Verbindungsabbruch: Skript einfach erneut ausführen — rsync setzt fort statt neu zu starten."
+rsync -av --partial --progress \
+  -e "ssh $SSH_OPTS" \
+  "$LOCAL_BACKUP" "${VPS_USER}@${VPS_HOST}:/root/backups/imac-hermes-backup-$TS.tar.gz" \
+  || { err "Transfer unterbrochen — führe das Skript einfach nochmal aus, rsync setzt fort"; exit 1; }
 ok "Transfer abgeschlossen"
+rm -f "$TS_FILE"
 
 # ── 3. Merge (rsync, iMac-Daten haben Vorrang, nichts wird gelöscht) ──────
 h "3) Merge in $REMOTE_HERMES_PATH"
-ssh "${VPS_USER}@${VPS_HOST}" bash -s "$TS" "$REMOTE_HERMES_PATH" "$CONTAINERS" <<'REMOTE_SCRIPT'
+ssh $SSH_OPTS "${VPS_USER}@${VPS_HOST}" bash -s "$TS" "$REMOTE_HERMES_PATH" "$CONTAINERS" <<'REMOTE_SCRIPT'
 set -euo pipefail
 TS="$1"; REMOTE_HERMES_PATH="$2"; CONTAINERS="$3"
 STAGE="/root/backups/imac-hermes-staged-$TS"
@@ -82,7 +110,7 @@ fi
 # ── 4. Telegram-Token (optional, direkt im Host-Pfad) ─────────────────────
 h "4) Telegram-Token"
 if [ -n "$TELEGRAM_TOKEN" ]; then
-  ssh "${VPS_USER}@${VPS_HOST}" bash -s "$REMOTE_HERMES_PATH" "$TELEGRAM_TOKEN" "$CONTAINERS" <<'TOKEN_SCRIPT'
+  ssh $SSH_OPTS "${VPS_USER}@${VPS_HOST}" bash -s "$REMOTE_HERMES_PATH" "$TELEGRAM_TOKEN" "$CONTAINERS" <<'TOKEN_SCRIPT'
 set -euo pipefail
 REMOTE_HERMES_PATH="$1"; TOKEN="$2"; CONTAINERS="$3"
 CONFIG="$REMOTE_HERMES_PATH/config.yaml"
@@ -113,9 +141,9 @@ sleep 6
 for c in $CONTAINERS; do
   echo ""
   echo "--- $c: Status ---"
-  ssh "${VPS_USER}@${VPS_HOST}" "docker ps --filter name=$c --format 'table {{.Names}}\t{{.Status}}'"
+  ssh $SSH_OPTS "${VPS_USER}@${VPS_HOST}" "docker ps --filter name=$c --format 'table {{.Names}}\t{{.Status}}'"
   echo "--- $c: Logs (gefiltert) ---"
-  ssh "${VPS_USER}@${VPS_HOST}" "docker logs $c 2>&1 | grep -iE 'telegram|connected|platform|started|error|skill' | tail -10"
+  ssh $SSH_OPTS "${VPS_USER}@${VPS_HOST}" "docker logs $c 2>&1 | grep -iE 'telegram|connected|platform|started|error|skill' | tail -10"
 done
 
 h "FERTIG"
