@@ -99,3 +99,63 @@ jq -r '.. | objects | select(.id? == "SUCHBEGRIFF")' ~/.hermes/models_dev_cache.
 - Transfer nutzt `rsync --partial` + SSH-Keepalive (siehe
   `hermes-vps-migrate-finish.sh`), damit Abbrüche bei langsamem Upload
   fortsetzbar sind statt bei 0 % neu zu beginnen.
+
+## 6. Terminologie: der Nutzer sagt "Hermes Desktop", nicht "Dashboard"
+
+Der Nutzer benutzt **ausschließlich** die Bezeichnung "Hermes Desktop" für die
+App, egal ob sie Local oder Remote läuft. "Dashboard" ist nur der interne
+Name des Server-Prozesses (`hermes-webui`), auf den Hermes Desktop im
+Remote-Modus zugreift — kein separates Produkt aus Nutzersicht. In
+Antworten und Diagnosen **immer "Hermes Desktop" sagen**, "Dashboard" nur
+verwenden, wenn technisch explizit der VPS-Serverprozess gemeint ist, und
+das dann auch so einordnen ("das Server-Gegenstück, mit dem Hermes Desktop
+im Remote-Modus spricht").
+
+## 7. 502 Bad Gateway — Ursache & YAML-Falle beim Modellwechsel
+
+**Vorfall:** Hermes Desktop (Remote) konnte sich nicht mehr verbinden,
+`https://hermes.apexcore.group/login` lieferte 502.
+
+**Root Cause #1 (Auslöser):** `hermes-webui` nutzte das Free-Tier-Modell
+`nvidia/nemotron-3-ultra-550b-a55b:free` über OpenRouter. Dessen Rate-Limit
+(32 Requests) wurde weit überschritten (`ResourceExhausted ... 365/32`),
+nach 3 gescheiterten Retries stoppen alle s6-Services intern und der
+Container beendet sich (`Exited (0)`/`(1)`). Der Reverse-Proxy davor ist
+**nginx** (nicht Caddy, wie `docs/RUNBOOKORCHESTRATIONV1.md` behauptet —
+Doku ist an der Stelle veraltet) und antwortet dann mit 502, weil kein
+Backend mehr lauscht.
+
+**Root Cause #2 (durch den ersten Fix-Versuch selbst verursacht):** In
+`/root/.hermes/config.yaml` ist `model:` **kein einzeiliger String**,
+sondern ein Mapping:
+```yaml
+model:
+  default: nvidia/nemotron-3-ultra-550b-a55b:free
+  provider: openrouter
+```
+Ein `sed -i 's|^model:.*|model: NEUES_MODELL|'` ersetzt nur Zeile 1 und
+lässt die alte `default:`/`provider:`-Zeile darunter stehen → ungültiges
+YAML ("mapping values are not allowed in this context") → Config wird
+komplett verworfen → Fallback-Config hat keinen Auth-Provider →
+`hermes-webui` verweigert den Start ganz (Exit Code 1). **Lehre: Modell-
+Feld in dieser config.yaml nie mit zeilenbasiertem `sed` anfassen,
+sondern gezielt nur die `default:`-Unterzeile ersetzen (Zeile bekannt
+über `sed -n '1,4p'` vorher prüfen) oder mit `python3 -c "import yaml"`
+laden/ändern/schreiben, und immer `yaml.safe_load()` **vor** dem
+Container-Neustart validieren.**
+
+**Fix, der funktioniert hat:**
+```bash
+ssh root@76.13.138.73 bash -s <<'REMOTE'
+set -e
+cp /root/.hermes/config.yaml /root/.hermes/config.yaml.broken-$(date +%Y%m%d_%H%M%S)
+LAST_BACKUP=$(ls -t /root/.hermes/config.yaml.bak-2* | head -1)
+cp "$LAST_BACKUP" /root/.hermes/config.yaml
+sed -i '2s|.*|  default: anthropic/claude-haiku-4.5|' /root/.hermes/config.yaml
+python3 -c "import yaml; yaml.safe_load(open('/root/.hermes/config.yaml')); print('YAML OK')"
+docker start hermes-webui
+docker restart hermes
+REMOTE
+```
+Aktuelles Dashboard-Modell: `anthropic/claude-haiku-4.5` (bezahlt, kein
+Free-Tier-Rate-Limit-Absturzrisiko mehr wie bei Nemotron-free).
