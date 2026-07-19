@@ -25,7 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from dossier_template import DossierContext, render_dossier
+from dossier_template import DossierContext, render_dossier, render_dossier_markdown
 from evidence import EvidenceItem
 from fable_reviewer import DISCLAIMER, FableReviewResult, LegalSubsumptionRow, TechnicalFinding, build_ki_uebergabe_prompt
 from screenshot_annotate import Annotation, annotate_screenshot
@@ -166,7 +166,11 @@ def main():
         out_pdf, ctx, evidence, findings, review, chronologie,
         annotated_images=[(annotated, "MUSTER-DARSTELLUNG, kein echter Screenshot — demonstriert nur die Annotation-Mechanik von screenshot_annotate.py. Reale Anlage aus dem Case-Ordner einsetzen.")],
     )
+    out_md = OUT_DIR / "ARAG_SE_Dossier_BEISPIEL.md"
+    render_dossier_markdown(out_md, ctx, evidence, findings, review, chronologie)
+
     print(f"Demo-Dossier geschrieben: {out_pdf}")
+    print(f"Demo-Dossier (Markdown): {out_md}")
     print(f"Annotierter Muster-Screenshot: {annotated}")
 
 

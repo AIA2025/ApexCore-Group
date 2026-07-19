@@ -401,3 +401,137 @@ def render_dossier(
 
     doc.build(story, onFirstPage=on_first, onLaterPages=on_later)
     return output_path
+
+
+# --------------------------------------------------------- markdown export --
+
+def render_dossier_markdown(
+    output_path: str | Path,
+    ctx: DossierContext,
+    evidence_items: list[EvidenceItem],
+    findings: list[TechnicalFinding],
+    review: FableReviewResult,
+    chronologie: list[str],
+) -> Path:
+    """Same content and section order as render_dossier(), as plain Markdown.
+
+    For pasting into tools that can't take a PDF upload (e.g. as LLM context
+    for the KI-Uebergabe step). Built from the same DossierContext /
+    EvidenceItem / TechnicalFinding / FableReviewResult objects as the PDF,
+    so the two can't drift apart.
+    """
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    lines: list[str] = []
+    w = lines.append
+
+    w(f"# Rechtliches Dossier — {ctx.company_name}")
+    w("")
+    w(f"**Dossier-ID:** {ctx.dossier_id}  ")
+    w(f"**Zielwebsite:** {ctx.url or '[nicht übermittelt]'}  ")
+    w(f"**Prüfdatum:** {ctx.prufdatum}  ")
+    w(f"**Zielfirma:** {ctx.company_name}" + (f", {ctx.company_address}" if ctx.company_address else "") + "  ")
+    if ctx.score is not None:
+        w(f"**Fable-Gesamtrisiko-Score:** {ctx.score}  ")
+    if ctx.risk:
+        w(f"**Risiko:** {ctx.risk}  ")
+    w("")
+    w(f"> {DISCLAIMER}")
+    w("")
+    w("---")
+    w("")
+
+    w("## 1. Sachverhalt für den anwaltlichen Schriftsatz")
+    w("")
+    w(f"Untersuchung vom {ctx.prufdatum} — geprüfte URL: {ctx.url or '[nicht übermittelt]'}")
+    w("")
+    w(review.sachverhalt_prosa)
+    w("")
+    w("### Anlagenverzeichnis")
+    w("")
+    w("| Anlage | Datei | Beschreibung |")
+    w("|---|---|---|")
+    for ev in evidence_items:
+        w(f"| {ev.label} | {ev.filename} | {ev.description} |")
+    w("")
+    if chronologie:
+        w("### Chronologische Zusammenfassung")
+        w("")
+        for entry in chronologie:
+            w(f"- {entry}")
+        w("")
+
+    w("## Ebene A — Technische Tatsachen")
+    w("")
+    w("Jede Feststellung verweist unmittelbar auf das zugrundeliegende Beweismittel "
+      "(Anlage, Datei, Seite, Hash) statt nur gesammelt im Anhang zu erscheinen.")
+    w("")
+    for f in findings:
+        tag = "VERIFIZIERT" if f.verified else "UNVERIFIZIERT"
+        w(f"- **[{tag}]** {f.statement}")
+        w(f"  ↳ *Beweismittel: {f.evidence.inline_ref()}*")
+    w("")
+
+    w("## Ebene B — Vorläufige rechtliche Einordnung")
+    w("")
+    w(f"> **{DISCLAIMER}**")
+    w("")
+    if review.legal_subsumption_chain:
+        w("| Norm | Tatbestandsmerkmal | Feststellung | Beweismittel-Ref. | Offene Punkte |")
+        w("|---|---|---|---|---|")
+        for row in review.legal_subsumption_chain:
+            w(f"| {row.norm} | {row.tatbestandsmerkmal} | {row.feststellung} | {row.beweis_referenz} | {row.offene_punkte} |")
+    else:
+        w("*Keine Zeilen — keine ausreichend verifizierten Feststellungen vorhanden.*")
+    w("")
+
+    w("## Vorläufige rechtliche Subsumtion")
+    w("")
+    w("**AUTOMATISIERT GENERIERT · VORLÄUFIG · KEINE RECHTSBERATUNG**")
+    w("")
+    w(review.subsumtion_prosa)
+    w("")
+
+    w("## Ebene C — Anwaltliche Entscheidung")
+    w("")
+    w("Dritter Block nach Ebene A (Tatsachen) und Ebene B (vorläufige Einordnung). "
+      "Ausschließlich die Kanzlei entscheidet hier verbindlich.")
+    w("")
+    w("**Kanzlei-Notizen:**")
+    w("")
+    w("> _[von der Kanzlei auszufüllen]_")
+    w("")
+    w("**Finale Entscheidung (z.B. Abmahnung / Behördenmeldung / keine Aktion):**")
+    w("")
+    w("> _[von der Kanzlei auszufüllen]_")
+    w("")
+    w("Datum, Unterschrift bearbeitende(r) Anwält(in): ______________________")
+    w("")
+
+    w("## Anlagen — Beweismittelverzeichnis")
+    w("")
+    w("| Anlage | Datei | Beschreibung | Seite | SHA-256 (Kurzform) |")
+    w("|---|---|---|---|---|")
+    for ev in evidence_items:
+        label, filename, desc, page, sha = ev.annex_row()
+        w(f"| {label} | {filename} | {desc} | {page} | {sha} |")
+    w("")
+
+    w("## KI-Übergabe")
+    w("")
+    if review.ki_uebergabe_prompt:
+        w("Kopierbarer Prompt-Block. Zur Eingabe in ein LLM zusammen mit den Dossier-Inhalten als "
+          "Kontext, zur Erstellung eines ersten Abmahnungs-/Schriftsatz-Entwurfs. Ersetzt keine "
+          "anwaltliche Prüfung.")
+        w("")
+        w("```")
+        w(review.ki_uebergabe_prompt)
+        w("```")
+    else:
+        w("Kein Prompt verfügbar: Der KI-Übergabe-Block wird ausschließlich auf Basis menschlich "
+          "verifizierter Ebene-A-Feststellungen erzeugt. Für diesen Fall liegen keine oder zu wenige "
+          "verifizierte Feststellungen vor.")
+    w("")
+
+    output_path.write_text("\n".join(lines), encoding="utf-8")
+    return output_path
