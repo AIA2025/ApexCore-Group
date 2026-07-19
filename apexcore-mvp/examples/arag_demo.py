@@ -1,21 +1,26 @@
 #!/usr/bin/env python3
 """Worked example: Fall 1 — ARAG SE (Case-ID AX-2026-0E8E4D2534).
 
-Renders one full dossier using the redesigned Ebene A/B/C template, for
-review before the structure is rolled out to other cases.
+Renders one full dossier using the redesigned Ebene A/B/C template, extended
+per Kanzlei-Feedback (Olaf Bitter, 2026-07-19) with the full Gutachtenstil
+subsumption, Anspruchsgrundlage/Rechtsfolgen, expected-defense analysis,
+procedural risk assessment, and the Mandats-/Abmahnungsparameter block.
 
 Source of the case facts: the 2026-07-17 Tageszusammenfassung provided in
 chat (Cognigy "Concierge-Bot", kein sichtbarer KI-Hinweis, Consent-before-Load
 kein Verstoss (CMP-gated), Art. 13 DSGVO-Informationspflicht verletzt,
-Fable-Gesamtrisiko: mittel, Score 98 / Detector-Konfidenz 0.92).
+Fable-Gesamtrisiko: mittel, Score 98 / Detector-Konfidenz 0.92) plus the
+"Offene Punkte" item from that summary (Kläger-Frage Wettbewerber vs. Verband,
+BGH März 2025) used to populate Aktivlegitimation below.
 
 This script does NOT have access to /data/apexcore/data/cases/AX-2026-0E8E4D2534/
 (no filesystem or network access to that server from this session). Anywhere
 an exact value was not given in chat — the precise checked URL, exact
-timestamp, real SHA-256 hashes, real screenshot files — this script uses an
-explicit, visibly-marked placeholder instead of inventing one. Swap the
-PLACEHOLDER_* constants below for the real values from the case folder
-before this leaves draft status.
+timestamp, real SHA-256 hashes, real screenshot files, Gegenstandswert,
+Vertragsstrafe, Frist, Kosten — this script uses an explicit, visibly-marked
+placeholder instead of inventing one. Swap the PLACEHOLDER_* constants and
+the MandateParameters fields below for the real values before this leaves
+draft status.
 """
 
 from __future__ import annotations
@@ -27,7 +32,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from dossier_template import DossierContext, render_dossier, render_dossier_markdown
 from evidence import EvidenceItem
-from fable_reviewer import DISCLAIMER, FableReviewResult, LegalSubsumptionRow, TechnicalFinding, build_ki_uebergabe_prompt
+from fable_reviewer import (
+    DISCLAIMER,
+    ExpectedDefense,
+    FableReviewResult,
+    LegalSubsumptionRow,
+    MandateParameters,
+    TechnicalFinding,
+    build_ki_uebergabe_prompt,
+)
 from screenshot_annotate import Annotation, annotate_screenshot
 
 from _mock_screenshot import build_mock_widget_screenshot
@@ -44,10 +57,30 @@ def build_evidence() -> list[EvidenceItem]:
     # gdpr_consent_check.py) but are illustrative — the exact filenames from the
     # real case folder were not given in chat and should replace these 1:1.
     return [
-        EvidenceItem(1, "screenshot-initial.png", "Startzustand der Website: Concierge-Bot-Icon sichtbar, kein KI-Hinweis im initialen Seitenbereich.", page_ref="1"),
-        EvidenceItem(2, "screenshot-widget-open.png", "Geöffnetes Cognigy-Chatfenster ('Concierge-Bot'): kein KI-Hinweis im Chat-UI.", page_ref="2"),
-        EvidenceItem(3, "datenschutzerklaerung-auszug.pdf", "Auszug Datenschutzerklärung ARAG SE: Cognigy als Verarbeiter nicht genannt (Art. 13 DSGVO).", page_ref="1"),
-        EvidenceItem(4, "cmp-consent-log.json", "Consent-Timing-Log: Cognigy-Requests erst nach CMP-Consent beobachtet (kein Consent-before-Load-Verstoß).", page_ref="1"),
+        EvidenceItem(
+            1, "screenshot-initial.png",
+            "Startzustand der Website: Concierge-Bot-Icon sichtbar, kein KI-Hinweis im initialen Seitenbereich.",
+            page_ref="1",
+            quality="Mittel (Screenshot grundsätzlich manipulierbar, hier aber automatisiert erstellt und mit SHA-256-Hash/Zeitstempel abgesichert).",
+        ),
+        EvidenceItem(
+            2, "screenshot-widget-open.png",
+            "Geöffnetes Cognigy-Chatfenster ('Concierge-Bot'): kein KI-Hinweis im Chat-UI.",
+            page_ref="2",
+            quality="Mittel; genaue Interaktionssequenz beim Öffnen nicht protokolliert (s. Ebene A, unverifizierte Feststellung).",
+        ),
+        EvidenceItem(
+            3, "datenschutzerklaerung-auszug.pdf",
+            "Auszug Datenschutzerklärung ARAG SE: Cognigy als Verarbeiter nicht genannt (Art. 13 DSGVO).",
+            page_ref="1",
+            quality="Hoch (Auszug aus öffentlich zugänglichem Rechtsdokument, direkt nachprüfbar).",
+        ),
+        EvidenceItem(
+            4, "cmp-consent-log.json",
+            "Consent-Timing-Log: Cognigy-Requests erst nach CMP-Consent beobachtet (kein Consent-before-Load-Verstoß).",
+            page_ref="1",
+            quality="Hoch (automatisiert erfasstes Netzwerk-Log, zeitgestempelt, reproduzierbar).",
+        ),
     ]
 
 
@@ -77,7 +110,7 @@ def build_findings(evidence: list[EvidenceItem]) -> list[TechnicalFinding]:
     ]
 
 
-def build_review(url: str, evidence: list[EvidenceItem]) -> FableReviewResult:
+def build_review(url: str, evidence: list[EvidenceItem], mandate: MandateParameters) -> FableReviewResult:
     ev = {e.label: e for e in evidence}
     sachverhalt = (
         f"Am 17.07.2026 wurde die Website der ARAG SE ({url}) forensisch untersucht. "
@@ -109,6 +142,10 @@ def build_review(url: str, evidence: list[EvidenceItem]) -> FableReviewResult:
             feststellung="Cognigy als eingesetzter Chatbot-Verarbeiter wird in der Datenschutzerklärung nicht genannt.",
             beweis_referenz=ev["Anlage 3"].inline_ref(),
             offene_punkte="Zu prüfen: greift eine Ausnahme (z.B. Unterauftragsverarbeiter-Sammelliste an anderer Stelle)? Vollständige Datenschutzerklärung durch Kanzlei zu sichten.",
+            subsumtion="Da Cognigy als Chatbot-Betreiber technisch nachweisbar personenbezogene Daten (Chat-Eingaben, IP-Adresse) verarbeitet, wäre eine Nennung als Empfänger/Auftragsverarbeiter nach Art. 13 Abs. 1 lit. e DSGVO erforderlich gewesen; diese fehlt im geprüften Auszug.",
+            ergebnis="(vorläufig) erfüllt",
+            anspruchsgrundlage="Bei Aktivlegitimation als Mitbewerber: § 8 Abs. 1, Abs. 3 Nr. 1 UWG i.V.m. § 3a UWG (DSGVO als Marktverhaltensregel). Bei Verbandsklagebefugnis: § 8 Abs. 3 Nr. 2–4 UWG bzw. § 2 UKlaG. Abhängig von der noch offenen Klärung der Aktivlegitimation (s. Ebene C).",
+            rechtsfolgen="Unterlassung; bei berechtigter Abmahnung Erstattung der Abmahnkosten (§ 13 Abs. 3 UWG).",
         ),
         LegalSubsumptionRow(
             norm="Art. 50 Abs. 4 AI Act",
@@ -116,6 +153,10 @@ def build_review(url: str, evidence: list[EvidenceItem]) -> FableReviewResult:
             feststellung="Kein KI-Hinweis im initialen oder geöffneten Widget-Zustand feststellbar.",
             beweis_referenz=f"{ev['Anlage 1'].inline_ref()}; {ev['Anlage 2'].inline_ref()}",
             offene_punkte="Vorschrift erst ab 02.08.2026 anwendbar — vor diesem Datum keine unmittelbare Rechtsfolge; als paralleler Befund für spätere Geltendmachung dokumentiert.",
+            subsumtion="Die Feststellung des fehlenden Hinweises betrifft exakt das Tatbestandsmerkmal der Kennzeichnungspflicht; die Rechtsfolge tritt jedoch erst mit Wirksamwerden der Norm am 02.08.2026 ein.",
+            ergebnis="Tatbestandsmerkmal (vorläufig) erfüllt, Rechtsfolge vor 02.08.2026 nicht durchsetzbar",
+            anspruchsgrundlage="Art. 50 Abs. 4 AI Act ist keine eigenständige zivilrechtliche Anspruchsgrundlage; Durchsetzung primär über Marktüberwachungsbehörden. Eine ergänzende zivilrechtliche Geltendmachung über § 3a UWG ist denkbar, aber rechtlich nicht abschließend geklärt.",
+            rechtsfolgen="Vor 02.08.2026: keine. Danach ggf. ergänzender Kontext zu einem UWG-Anspruch, kein eigenständiger Unterlassungsanspruch aus der Norm selbst.",
         ),
         LegalSubsumptionRow(
             norm="Art. 6 Abs. 1 lit. a DSGVO (Consent-before-Load)",
@@ -123,10 +164,58 @@ def build_review(url: str, evidence: list[EvidenceItem]) -> FableReviewResult:
             feststellung="Kein Verstoß: Cognigy-Requests ausschließlich nach CMP-Consent beobachtet.",
             beweis_referenz=ev["Anlage 4"].inline_ref(),
             offene_punkte="Keine — dieser Punkt wird als entlastender Befund dokumentiert, nicht als Verstoß.",
+            subsumtion="Das Consent-Log zeigt keine Datenübertragung vor Consent-Erteilung; das Tatbestandsmerkmal eines Vor-Consent-Ladens ist damit nicht erfüllt.",
+            ergebnis="nicht erfüllt (entlastend)",
+            anspruchsgrundlage="Entfällt — kein Verstoß festgestellt.",
+            rechtsfolgen="Keine.",
         ),
     ]
-    prompt = build_ki_uebergabe_prompt(url, sachverhalt, subsumtion, chain)
-    return FableReviewResult(sachverhalt_prosa=sachverhalt, subsumtion_prosa=subsumtion, legal_subsumption_chain=chain, ki_uebergabe_prompt=prompt)
+    defenses = [
+        ExpectedDefense(
+            einwendung="ARAG könnte vortragen, ein KI-Hinweis sei an anderer, hier nicht geprüfter Stelle vorhanden (z.B. Impressum, AGB, Cookie-Banner-Text).",
+            erwiderung="Die Kennzeichnungspflicht dürfte einen für den Nutzer im unmittelbaren Interaktionskontext erkennbaren Hinweis erfordern; ein an anderer Stelle versteckter Hinweis genügt voraussichtlich nicht. Vor Versand zu prüfen, ob ARAG einen solchen Hinweis tatsächlich vorweisen kann.",
+            bezug="Art. 50 Abs. 4 AI Act",
+        ),
+        ExpectedDefense(
+            einwendung="ARAG könnte vortragen, Cognigy sei reiner technischer Dienstleister ohne Verarbeitung personenbezogener Daten und daher nicht nennungspflichtig.",
+            erwiderung="Chat-Eingaben und IP-Adresse dürften regelmäßig personenbezogene Daten sein; zu prüfen, ob ein Auftragsverarbeitungsvertrag vorliegt und ob dieser die Informationspflicht aus Art. 13 DSGVO berührt (eine vertragliche Abbedingung dieser Pflicht ist grundsätzlich nicht möglich).",
+            bezug="Art. 13 Abs. 1 lit. e DSGVO",
+        ),
+        ExpectedDefense(
+            einwendung="ARAG könnte die Aktivlegitimation der anspruchstellenden Partei bestreiten (kein Wettbewerbsverhältnis, keine Verbandsklagebefugnis).",
+            erwiderung="Aktivlegitimation ist vor Versand einer Abmahnung zu klären (s. Mandats-/Abmahnungsparameter, Ebene C); ohne geklärte Aktivlegitimation besteht ein erhebliches prozessuales Risiko unabhängig von der technischen Beweislage.",
+            bezug="Aktivlegitimation (Ebene C)",
+        ),
+    ]
+    risiko = (
+        "Die Beweislage zur fehlenden KI-Kennzeichnung stützt sich auf zwei automatisiert erstellte Screenshots "
+        f"({ev['Anlage 1'].label}, {ev['Anlage 2'].label}); deren Beweisqualität ist als 'Mittel' eingestuft (s. Anlagenverzeichnis). "
+        "Die Aktivlegitimation ist zum Zeitpunkt dieser Vorprüfung nicht geklärt (Wettbewerber- vs. Verbandsstatus, vgl. BGH März 2025) "
+        "und stellt das größte offene Risiko für eine Abmahnung dar — unabhängig davon, wie stark die technische Beweislage ist. "
+        "Die AI-Act-Achse (Art. 50 Abs. 4) ist vor dem 02.08.2026 nicht unmittelbar durchsetzbar und sollte in einer vor diesem Datum "
+        "versandten Abmahnung nicht als eigenständiger Anspruch, sondern allenfalls als Kontext angeführt werden. Die DSGVO-Achse "
+        "(Art. 13) erscheint auf Basis der vorliegenden Feststellung vergleichsweise robust, sofern die vollständige "
+        "Datenschutzerklärung durch die Kanzlei gesichtet und keine Ausnahme gefunden wird."
+    )
+    prompt = build_ki_uebergabe_prompt(url, sachverhalt, subsumtion, chain, defenses, risiko, mandate)
+    return FableReviewResult(
+        sachverhalt_prosa=sachverhalt, subsumtion_prosa=subsumtion, legal_subsumption_chain=chain,
+        erwartete_einwendungen=defenses, prozessuale_risikobewertung=risiko, ki_uebergabe_prompt=prompt,
+    )
+
+
+def build_mandate() -> MandateParameters:
+    # Only the Aktivlegitimation open-question text is known (from the daily
+    # summary's own "Offene Punkte" list). Everything else genuinely needs
+    # Mandatsdaten this session does not have -- left blank on purpose.
+    return MandateParameters(
+        aktivlegitimation=(
+            "OFFEN — Kläger-Frage noch nicht geklärt: Wettbewerber (§ 8 Abs. 3 Nr. 1 UWG) oder "
+            "klagebefugter Verband (§ 8 Abs. 3 Nr. 2–4 UWG / § 2 UKlaG)? Kanzlei-Rückmeldung ausstehend "
+            "(vgl. BGH-Rechtsprechung zur Wettbewerber-Aktivlegitimation, März 2025)."
+        ),
+        passivlegitimation="ARAG SE — [Anschrift/Registerdaten aus Impressum bzw. Handelsregister zu verifizieren].",
+    )
 
 
 def main():
@@ -141,7 +230,8 @@ def main():
     )
 
     findings = build_findings(evidence)
-    review = build_review(PLACEHOLDER_URL, evidence)
+    mandate = build_mandate()
+    review = build_review(PLACEHOLDER_URL, evidence, mandate)
 
     ctx = DossierContext(
         dossier_id="AX-2026-0E8E4D2534",
@@ -165,9 +255,10 @@ def main():
     render_dossier(
         out_pdf, ctx, evidence, findings, review, chronologie,
         annotated_images=[(annotated, "MUSTER-DARSTELLUNG, kein echter Screenshot — demonstriert nur die Annotation-Mechanik von screenshot_annotate.py. Reale Anlage aus dem Case-Ordner einsetzen.")],
+        mandate=mandate,
     )
     out_md = OUT_DIR / "ARAG_SE_Dossier_BEISPIEL.md"
-    render_dossier_markdown(out_md, ctx, evidence, findings, review, chronologie)
+    render_dossier_markdown(out_md, ctx, evidence, findings, review, chronologie, mandate=mandate)
 
     print(f"Demo-Dossier geschrieben: {out_pdf}")
     print(f"Demo-Dossier (Markdown): {out_md}")

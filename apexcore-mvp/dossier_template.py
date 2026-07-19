@@ -1,14 +1,22 @@
 """Kanzlei-Dossier PDF renderer — Ebene A / B / C structure.
 
-Layout (in this order, per the redesign spec):
+Layout (in this order, per the redesign spec, extended per Kanzlei-Feedback
+2026-07-19 to reach "unmittelbar vor Freigabe der Abmahnung"):
   0. Deckblatt
   1. Sachverhalt fuer den anwaltlichen Schriftsatz
   2. Ebene A  - Technische Tatsachen (jede Aussage mit Beweismittel-Verweis)
   3. Ebene B  - Vorlaeufige rechtliche Einordnung (Tabelle, Pflicht-Disclaimer)
   4. Vorlaeufige rechtliche Subsumtion (Fliesstext, als automatisiert markiert)
-  5. Ebene C  - Anwaltliche Entscheidung (Freitext-Bloecke fuer die Kanzlei)
-  6. Anlagen  - Beweismittelverzeichnis + annotierte Screenshots
-  7. KI-Uebergabe (nur wenn review.ki_uebergabe_prompt gesetzt ist, siehe fable_reviewer.review())
+  5. Gutachterliche Pruefung im Detail (Tatbestandsmerkmal-Feststellung-
+     Subsumtion-Ergebnis je Norm, klassischer Gutachtenstil)
+  6. Anspruchsgrundlage und Rechtsfolgen
+  7. Erwartete Einwendungen der Gegenseite und moegliche Erwiderungen
+  8. Prozessuale Risikobewertung
+  9. Ebene C  - Anwaltliche Entscheidung + Mandats-/Abmahnungsparameter
+     (Aktivlegitimation, Passivlegitimation, Gegenstandswert, Vertragsstrafe,
+     Frist, Kosten -- Freitext-/Leerfelder, NIE automatisiert befuellt)
+  10. Anlagen - Beweismittelverzeichnis (inkl. Beweisqualitaet) + annotierte Screenshots
+  11. KI-Uebergabe (nur wenn review.ki_uebergabe_prompt gesetzt ist, siehe fable_reviewer.review())
 
 Built on reportlab.platypus so tables/paragraphs wrap correctly, instead of
 the manual line-wrapping the previous single-function canvas version used.
@@ -37,7 +45,15 @@ from reportlab.platypus import (
 )
 
 from evidence import EvidenceItem
-from fable_reviewer import DISCLAIMER, FableReviewResult, LegalSubsumptionRow, TechnicalFinding
+from fable_reviewer import (
+    DISCLAIMER,
+    MANDATE_FIELD_LABELS,
+    ExpectedDefense,
+    FableReviewResult,
+    LegalSubsumptionRow,
+    MandateParameters,
+    TechnicalFinding,
+)
 
 NAVY = colors.HexColor("#1B3A6B")
 WHITE = colors.white
@@ -77,6 +93,7 @@ def _styles():
         backColor=LIGHT_GRAY, borderColor=DARK, borderWidth=0.75, borderPadding=8, borderRadius=2,
     ))
     ss.add(ParagraphStyle("Caption", parent=ss["Normal"], fontSize=7.6, leading=10, textColor=GRAY))
+    ss.add(ParagraphStyle("CellPlaceholder", parent=ss["Normal"], fontSize=8, leading=10.5, textColor=GRAY, fontName="Helvetica-Oblique"))
     return ss
 
 
@@ -230,21 +247,123 @@ def _section_ebene_b(ss, rows: list[LegalSubsumptionRow]) -> list:
     flow.append(disclaimer_table)
     flow.append(Spacer(1, 5 * mm))
 
-    header = ["Norm", "Tatbestandsmerkmal", "Feststellung", "Beweismittel-Ref.", "Offene Punkte"]
+    header = ["Norm", "Tatbestandsmerkmal", "Feststellung", "Ergebnis", "Beweismittel-Ref.", "Offene Punkte"]
     data = [[Paragraph(h, ss["CellHead"]) for h in header]]
     for row in rows:
         data.append([
             Paragraph(escape(row.norm), ss["Cell"]),
             Paragraph(escape(row.tatbestandsmerkmal), ss["Cell"]),
             Paragraph(escape(row.feststellung), ss["Cell"]),
+            Paragraph(escape(row.ergebnis or "offen"), ss["Cell"]),
             Paragraph(escape(row.beweis_referenz), ss["Cell"]),
             Paragraph(escape(row.offene_punkte), ss["Cell"]),
         ])
     if len(data) == 1:
-        data.append([Paragraph("—", ss["Cell"])] * 5)
-    t = Table(data, colWidths=[28 * mm, 34 * mm, 42 * mm, 36 * mm, 40 * mm], repeatRows=1)
+        data.append([Paragraph("—", ss["Cell"])] * 6)
+    t = Table(data, colWidths=[25 * mm, 28 * mm, 34 * mm, 22 * mm, 32 * mm, 39 * mm], repeatRows=1)
     t.setStyle(_table_style())
     flow.append(t)
+    flow.append(PageBreak())
+    return flow
+
+
+# ------------------------------------------- section: Gutachterliche Pruefung --
+
+def _section_gutachten(ss, rows: list[LegalSubsumptionRow]) -> list:
+    flow = [Paragraph("Gutachterliche Prüfung im Detail", ss["H1"])]
+    flow.append(Paragraph(
+        "Vollständige Subsumtion je Norm im klassischen Gutachtenstil (Tatbestandsmerkmal — "
+        "Feststellung — Subsumtion — Ergebnis). Automatisiert erstellt, vorläufig, keine "
+        "Rechtsberatung — Ergebnis ist stets als 'vorläufig' zu lesen und von der Kanzlei zu prüfen.",
+        ss["BodySmall"],
+    ))
+    flow.append(Spacer(1, 4 * mm))
+    if not rows:
+        flow.append(Paragraph("Keine Zeilen — keine ausreichend verifizierten Feststellungen vorhanden.", ss["Body"]))
+    for row in rows:
+        flow.append(Paragraph(row.norm, ss["H2"]))
+        flow.append(Paragraph(f"<b>Tatbestandsmerkmal:</b> {escape(row.tatbestandsmerkmal)}", ss["Body"]))
+        flow.append(Paragraph(f"<b>Feststellung:</b> {escape(row.feststellung)} <i>({escape(row.beweis_referenz)})</i>", ss["Body"]))
+        flow.append(Paragraph(f"<b>Subsumtion:</b> {escape(row.subsumtion or '[nicht erzeugt]')}", ss["Body"]))
+        flow.append(Paragraph(f"<b>Ergebnis:</b> {escape(row.ergebnis or 'offen')}", ss["Body"]))
+        if row.offene_punkte:
+            flow.append(Paragraph(f"<b>Offene Punkte:</b> {escape(row.offene_punkte)}", ss["BodySmall"]))
+        flow.append(Spacer(1, 4 * mm))
+    flow.append(PageBreak())
+    return flow
+
+
+# ------------------------------------ section: Anspruchsgrundlage/Rechtsfolgen --
+
+def _section_ansprueche(ss, rows: list[LegalSubsumptionRow]) -> list:
+    flow = [Paragraph("Anspruchsgrundlage und Rechtsfolgen", ss["H1"])]
+    flow.append(Paragraph(
+        "Standardmäßig mit der jeweiligen Norm verbundene Anspruchsgrundlage und daraus "
+        "typischerweise folgende Ansprüche. Keine Einzelfallbewertung von Gegenstandswert, "
+        "Vertragsstrafe oder Frist — diese Parameter stehen unter Ebene C.",
+        ss["BodySmall"],
+    ))
+    flow.append(Spacer(1, 4 * mm))
+    header = ["Norm", "Anspruchsgrundlage", "Ansprüche (Rechtsfolgen)"]
+    data = [[Paragraph(h, ss["CellHead"]) for h in header]]
+    for row in rows:
+        data.append([
+            Paragraph(escape(row.norm), ss["Cell"]),
+            Paragraph(escape(row.anspruchsgrundlage or "[abhängig von Aktivlegitimation, durch Kanzlei zu bestimmen]"), ss["Cell"]),
+            Paragraph(escape(row.rechtsfolgen or "[durch Kanzlei zu bestimmen]"), ss["Cell"]),
+        ])
+    if len(data) == 1:
+        data.append([Paragraph("—", ss["Cell"])] * 3)
+    t = Table(data, colWidths=[35 * mm, 75 * mm, 70 * mm], repeatRows=1)
+    t.setStyle(_table_style())
+    flow.append(t)
+    flow.append(PageBreak())
+    return flow
+
+
+# ------------------------------------------------- section: Erwartete Einwendungen --
+
+def _section_einwendungen(ss, defenses: list[ExpectedDefense]) -> list:
+    flow = [Paragraph("Erwartete Einwendungen der Gegenseite und mögliche Erwiderungen", ss["H1"])]
+    flow.append(Paragraph(
+        "Automatisiert erstellte, vorläufige Einschätzung denkbarer Gegenargumente — als "
+        "Vorbereitungshilfe, kein Ersatz für die anwaltliche Prozessstrategie.",
+        ss["BodySmall"],
+    ))
+    flow.append(Spacer(1, 4 * mm))
+    header = ["Einwendung", "Mögliche Erwiderung", "Bezug"]
+    data = [[Paragraph(h, ss["CellHead"]) for h in header]]
+    for d in defenses:
+        data.append([
+            Paragraph(escape(d.einwendung), ss["Cell"]),
+            Paragraph(escape(d.erwiderung), ss["Cell"]),
+            Paragraph(escape(d.bezug), ss["Cell"]),
+        ])
+    if len(data) == 1:
+        data.append([Paragraph("Keine erwarteten Einwendungen dokumentiert.", ss["Cell"])] + [Paragraph("", ss["Cell"])] * 2)
+    t = Table(data, colWidths=[65 * mm, 75 * mm, 40 * mm], repeatRows=1)
+    t.setStyle(_table_style())
+    flow.append(t)
+    flow.append(PageBreak())
+    return flow
+
+
+# --------------------------------------------- section: Prozessuale Risikobewertung --
+
+def _section_risiko(ss, text: str) -> list:
+    flow = [Paragraph("Prozessuale Risikobewertung", ss["H1"])]
+    badge = Table([[Paragraph("AUTOMATISIERT GENERIERT · VORLÄUFIG · KEINE ERFOLGSPROGNOSE", ss["Disclaimer"])]], colWidths=[180 * mm])
+    badge.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), AMBER),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8), ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    flow.append(badge)
+    flow.append(Spacer(1, 4 * mm))
+    for para in (text or "[nicht erzeugt]").split("\n\n"):
+        if para.strip():
+            flow.append(Paragraph(escape(para.strip()).replace("\n", "<br/>"), ss["Body"]))
+            flow.append(Spacer(1, 3 * mm))
     flow.append(PageBreak())
     return flow
 
@@ -295,7 +414,40 @@ def _blank_box(ss, label: str, height_mm: float = 40) -> Table:
     return t
 
 
-def _section_ebene_c(ss) -> list:
+def _section_mandate_parameters(ss, mandate: MandateParameters) -> list:
+    flow = [Paragraph("Mandats- und Abmahnungsparameter", ss["H2"])]
+    flow.append(Paragraph(
+        "Diese Angaben werden nicht aus der technischen Prüfung abgeleitet, sondern kommen "
+        "ausschließlich aus den Mandatsdaten bzw. standardisierten Eingabefeldern der Kanzlei "
+        "(Aktivlegitimation: Mitbewerber/Verband-Frage siehe Kanzlei-Rückmeldung).",
+        ss["BodySmall"],
+    ))
+    flow.append(Spacer(1, 3 * mm))
+    rows = []
+    for key, label in MANDATE_FIELD_LABELS.items():
+        value = getattr(mandate, key)
+        if value:
+            cell = Paragraph(escape(value), ss["Cell"])
+        else:
+            cell = Paragraph("[von der Kanzlei zu ergänzen]", ss["CellPlaceholder"])
+        rows.append([Paragraph(f"<b>{label}</b>", ss["Cell"]), cell])
+    # No fixed rowHeights: a Table with an explicit height smaller than a
+    # cell's wrapped content overlaps the next row instead of growing (hit
+    # this with the longer Aktivlegitimation text) -- let each row size to
+    # its own content instead.
+    t = Table(rows, colWidths=[45 * mm, 135 * mm])
+    t.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.5, GRAY),
+        ("BACKGROUND", (0, 0), (0, -1), LIGHT_GRAY),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5), ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ]))
+    flow.append(t)
+    return flow
+
+
+def _section_ebene_c(ss, mandate: MandateParameters) -> list:
     flow = [Paragraph("Ebene C — Anwaltliche Entscheidung", ss["H1"])]
     flow.append(Paragraph(
         "Dritter Block nach Ebene A (Tatsachen) und Ebene B (vorläufige Einordnung). "
@@ -303,9 +455,11 @@ def _section_ebene_c(ss) -> list:
         ss["BodySmall"],
     ))
     flow.append(Spacer(1, 4 * mm))
-    flow.append(_blank_box(ss, "Kanzlei-Notizen", height_mm=45))
+    flow += _section_mandate_parameters(ss, mandate)
     flow.append(Spacer(1, 6 * mm))
-    flow.append(_blank_box(ss, "Finale Entscheidung (z.B. Abmahnung / Behördenmeldung / keine Aktion)", height_mm=35))
+    flow.append(_blank_box(ss, "Kanzlei-Notizen", height_mm=40))
+    flow.append(Spacer(1, 6 * mm))
+    flow.append(_blank_box(ss, "Finale Entscheidung (z.B. Abmahnung / Behördenmeldung / keine Aktion)", height_mm=30))
     flow.append(Spacer(1, 8 * mm))
     sig = Table([[Paragraph("Datum, Unterschrift bearbeitende(r) Anwält(in)", ss["BodySmall"])], [Spacer(1, 12 * mm)]], colWidths=[100 * mm])
     sig.setStyle(TableStyle([("LINEBELOW", (0, 1), (0, 1), 0.75, DARK)]))
@@ -318,12 +472,16 @@ def _section_ebene_c(ss) -> list:
 
 def _section_annex(ss, evidence_items: list[EvidenceItem], annotated_images: list[tuple[Path, str]]) -> list:
     flow = [Paragraph("Anlagen — Beweismittelverzeichnis", ss["H1"])]
-    header = ["Anlage", "Datei", "Beschreibung", "Seite", "SHA-256 (Kurzform)"]
+    header = ["Anlage", "Datei", "Beschreibung", "Seite", "SHA-256 (Kurzform)", "Beweisqualität"]
     data = [[Paragraph(h, ss["CellHead"]) for h in header]]
     for ev in evidence_items:
-        label, filename, desc, page, sha = ev.annex_row()
-        data.append([Paragraph(label, ss["Cell"]), Paragraph(escape(filename), ss["Cell"]), Paragraph(escape(desc), ss["Cell"]), Paragraph(page, ss["Cell"]), Paragraph(sha, ss["Cell"])])
-    t = Table(data, colWidths=[20 * mm, 40 * mm, 65 * mm, 20 * mm, 35 * mm], repeatRows=1)
+        label, filename, desc, page, sha, quality = ev.annex_row()
+        data.append([
+            Paragraph(label, ss["Cell"]), Paragraph(escape(filename), ss["Cell"]),
+            Paragraph(escape(desc), ss["Cell"]), Paragraph(page, ss["Cell"]),
+            Paragraph(sha, ss["Cell"]), Paragraph(escape(quality), ss["Cell"]),
+        ])
+    t = Table(data, colWidths=[16 * mm, 32 * mm, 50 * mm, 14 * mm, 28 * mm, 40 * mm], repeatRows=1)
     t.setStyle(_table_style())
     flow.append(t)
     flow.append(PageBreak())
@@ -373,10 +531,12 @@ def render_dossier(
     review: FableReviewResult,
     chronologie: list[str],
     annotated_images: list[tuple[Path, str]],
+    mandate: MandateParameters | None = None,
 ) -> Path:
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     ss = _styles()
+    mandate = mandate or MandateParameters()
 
     doc = SimpleDocTemplate(
         str(output_path), pagesize=A4,
@@ -389,7 +549,11 @@ def render_dossier(
     story += _section_ebene_a(ss, findings)
     story += _section_ebene_b(ss, review.legal_subsumption_chain)
     story += _section_subsumtion(ss, review.subsumtion_prosa)
-    story += _section_ebene_c(ss)
+    story += _section_gutachten(ss, review.legal_subsumption_chain)
+    story += _section_ansprueche(ss, review.legal_subsumption_chain)
+    story += _section_einwendungen(ss, review.erwartete_einwendungen)
+    story += _section_risiko(ss, review.prozessuale_risikobewertung)
+    story += _section_ebene_c(ss, mandate)
     story += _section_annex(ss, evidence_items, annotated_images)
     story += _section_ki_uebergabe(ss, review.ki_uebergabe_prompt)
 
@@ -412,6 +576,7 @@ def render_dossier_markdown(
     findings: list[TechnicalFinding],
     review: FableReviewResult,
     chronologie: list[str],
+    mandate: MandateParameters | None = None,
 ) -> Path:
     """Same content and section order as render_dossier(), as plain Markdown.
 
@@ -422,6 +587,7 @@ def render_dossier_markdown(
     """
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    mandate = mandate or MandateParameters()
     lines: list[str] = []
     w = lines.append
 
@@ -477,10 +643,10 @@ def render_dossier_markdown(
     w(f"> **{DISCLAIMER}**")
     w("")
     if review.legal_subsumption_chain:
-        w("| Norm | Tatbestandsmerkmal | Feststellung | Beweismittel-Ref. | Offene Punkte |")
-        w("|---|---|---|---|---|")
+        w("| Norm | Tatbestandsmerkmal | Feststellung | Ergebnis | Beweismittel-Ref. | Offene Punkte |")
+        w("|---|---|---|---|---|---|")
         for row in review.legal_subsumption_chain:
-            w(f"| {row.norm} | {row.tatbestandsmerkmal} | {row.feststellung} | {row.beweis_referenz} | {row.offene_punkte} |")
+            w(f"| {row.norm} | {row.tatbestandsmerkmal} | {row.feststellung} | {row.ergebnis or 'offen'} | {row.beweis_referenz} | {row.offene_punkte} |")
     else:
         w("*Keine Zeilen — keine ausreichend verifizierten Feststellungen vorhanden.*")
     w("")
@@ -492,10 +658,73 @@ def render_dossier_markdown(
     w(review.subsumtion_prosa)
     w("")
 
+    w("## Gutachterliche Prüfung im Detail")
+    w("")
+    w("Vollständige Subsumtion je Norm im klassischen Gutachtenstil (Tatbestandsmerkmal — "
+      "Feststellung — Subsumtion — Ergebnis). Automatisiert erstellt, vorläufig.")
+    w("")
+    if not review.legal_subsumption_chain:
+        w("*Keine Zeilen — keine ausreichend verifizierten Feststellungen vorhanden.*")
+    for row in review.legal_subsumption_chain:
+        w(f"### {row.norm}")
+        w("")
+        w(f"- **Tatbestandsmerkmal:** {row.tatbestandsmerkmal}")
+        w(f"- **Feststellung:** {row.feststellung} ({row.beweis_referenz})")
+        w(f"- **Subsumtion:** {row.subsumtion or '[nicht erzeugt]'}")
+        w(f"- **Ergebnis:** {row.ergebnis or 'offen'}")
+        if row.offene_punkte:
+            w(f"- **Offene Punkte:** {row.offene_punkte}")
+        w("")
+
+    w("## Anspruchsgrundlage und Rechtsfolgen")
+    w("")
+    w("Standardmäßig mit der jeweiligen Norm verbundene Anspruchsgrundlage und daraus "
+      "typischerweise folgende Ansprüche. Keine Einzelfallbewertung von Gegenstandswert, "
+      "Vertragsstrafe oder Frist — diese stehen unter Ebene C.")
+    w("")
+    if review.legal_subsumption_chain:
+        w("| Norm | Anspruchsgrundlage | Ansprüche (Rechtsfolgen) |")
+        w("|---|---|---|")
+        for row in review.legal_subsumption_chain:
+            w(f"| {row.norm} | {row.anspruchsgrundlage or '[abhängig von Aktivlegitimation, durch Kanzlei zu bestimmen]'} | {row.rechtsfolgen or '[durch Kanzlei zu bestimmen]'} |")
+    else:
+        w("*Keine Zeilen.*")
+    w("")
+
+    w("## Erwartete Einwendungen der Gegenseite und mögliche Erwiderungen")
+    w("")
+    w("Automatisiert erstellte, vorläufige Einschätzung denkbarer Gegenargumente — als "
+      "Vorbereitungshilfe, kein Ersatz für die anwaltliche Prozessstrategie.")
+    w("")
+    if review.erwartete_einwendungen:
+        w("| Einwendung | Mögliche Erwiderung | Bezug |")
+        w("|---|---|---|")
+        for d in review.erwartete_einwendungen:
+            w(f"| {d.einwendung} | {d.erwiderung} | {d.bezug} |")
+    else:
+        w("*Keine erwarteten Einwendungen dokumentiert.*")
+    w("")
+
+    w("## Prozessuale Risikobewertung")
+    w("")
+    w("**AUTOMATISIERT GENERIERT · VORLÄUFIG · KEINE ERFOLGSPROGNOSE**")
+    w("")
+    w(review.prozessuale_risikobewertung or "[nicht erzeugt]")
+    w("")
+
     w("## Ebene C — Anwaltliche Entscheidung")
     w("")
     w("Dritter Block nach Ebene A (Tatsachen) und Ebene B (vorläufige Einordnung). "
       "Ausschließlich die Kanzlei entscheidet hier verbindlich.")
+    w("")
+    w("### Mandats- und Abmahnungsparameter")
+    w("")
+    w("Nicht aus der technischen Prüfung abgeleitet — ausschließlich aus Mandatsdaten/"
+      "Kanzlei-Eingabe.")
+    w("")
+    for key, label in MANDATE_FIELD_LABELS.items():
+        value = getattr(mandate, key)
+        w(f"- **{label}:** {value or '[von der Kanzlei zu ergänzen]'}")
     w("")
     w("**Kanzlei-Notizen:**")
     w("")
@@ -510,11 +739,11 @@ def render_dossier_markdown(
 
     w("## Anlagen — Beweismittelverzeichnis")
     w("")
-    w("| Anlage | Datei | Beschreibung | Seite | SHA-256 (Kurzform) |")
-    w("|---|---|---|---|---|")
+    w("| Anlage | Datei | Beschreibung | Seite | SHA-256 (Kurzform) | Beweisqualität |")
+    w("|---|---|---|---|---|---|")
     for ev in evidence_items:
-        label, filename, desc, page, sha = ev.annex_row()
-        w(f"| {label} | {filename} | {desc} | {page} | {sha} |")
+        label, filename, desc, page, sha, quality = ev.annex_row()
+        w(f"| {label} | {filename} | {desc} | {page} | {sha} | {quality} |")
     w("")
 
     w("## KI-Übergabe")

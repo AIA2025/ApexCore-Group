@@ -22,6 +22,7 @@ class EvidenceItem:
     file_path: Path | None = None
     page_ref: str = ""
     sha256: str = ""
+    quality: str = ""  # e.g. "Hoch (automatisiert erfasst, Hash-gesichert, reproduzierbar)"
 
     def __post_init__(self):
         if self.file_path is not None and Path(self.file_path).exists() and not self.sha256:
@@ -46,7 +47,7 @@ class EvidenceItem:
 
     def annex_row(self) -> tuple:
         """Row for the Anlagenverzeichnis table."""
-        return (self.label, self.filename, self.description, self.page_ref or "-", f"{self.short_hash}…" if self.sha256 else "N/A")
+        return (self.label, self.filename, self.description, self.page_ref or "-", f"{self.short_hash}…" if self.sha256 else "N/A", self.quality or "[nicht bewertet]")
 
 
 def build_evidence_index(items: list[EvidenceItem]) -> dict[str, EvidenceItem]:
