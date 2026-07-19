@@ -53,7 +53,9 @@ def annotate_screenshot(src_path: str | Path, dest_path: str | Path, annotations
         text_bbox = draw.textbbox((0, 0), tag, font=font)
         tw, th = text_bbox[2] - text_bbox[0], text_bbox[3] - text_bbox[1]
         pad = 6
-        label_x, label_y = x0, max(0, y0 - th - 2 * pad - 6)
+        label_x = min(x0, base.width - tw - 2 * pad - 1)
+        label_x = max(0, label_x)
+        label_y = max(0, y0 - th - 2 * pad - 6)
         draw.rectangle([label_x, label_y, label_x + tw + 2 * pad, label_y + th + 2 * pad], fill=LABEL_BG)
         draw.text((label_x + pad, label_y + pad), tag, font=font, fill=LABEL_FG)
         # connector between label and box
