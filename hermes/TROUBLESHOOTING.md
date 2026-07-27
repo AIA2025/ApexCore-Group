@@ -159,3 +159,34 @@ REMOTE
 ```
 Aktuelles Dashboard-Modell: `anthropic/claude-haiku-4.5` (bezahlt, kein
 Free-Tier-Rate-Limit-Absturzrisiko mehr wie bei Nemotron-free).
+
+## 8. "Hermes Desktop verbindet nicht" — Runde 2: sauberes SIGTERM statt Absturz
+
+**Symptom:** Hermes Desktop (Remote) verbindet nicht, `hermes-webui` zeigt
+`Exited (0)` (kein Fehler-Exitcode!), HTTP 502.
+
+**Ursache:** Container hat ein `SIGTERM` bekommen ("Received SIGTERM.
+Shutting down...") und ist danach einfach **nicht automatisch neu
+gestartet** — es war keine Docker-Restart-Policy gesetzt. Kein Bezug zu
+Punkt 7 (Modell/YAML), einfach ein sauber gestoppter Container, der liegen
+geblieben ist.
+
+**Nebenbefund (nicht die Ursache, aber im Log aufgefallen):** Zeitgleich
+lief im selben Container ein extrem langsamer ComfyUI-Bildgenerierungs-Job
+(`~9 Min./Schritt`, 20 Schritte) über `/opt/data/home/ComfyUI_vps`, der mit
+einem VAE-Kanal-Fehler crashte (`RuntimeError: ... expected input[...] to
+have 4 channels, but got 16 channels instead` — falsches VAE für das
+verwendete Modell, z. B. SD-1.5/SDXL-VAE mit einem 16-Kanal-Latent-Modell
+wie SD3/Flux kombiniert). Separates Thema, noch ungeklärt, ggf. später
+angehen falls die Bildgenerierung wichtig ist.
+
+**Fix + Prävention:**
+```bash
+ssh root@76.13.138.73 bash -s <<'REMOTE'
+docker start hermes-webui
+docker update --restart unless-stopped hermes-webui hermes
+REMOTE
+```
+`--restart unless-stopped` sorgt dafür, dass beide Container künftig nach
+einem Absturz/SIGTERM automatisch neu starten, statt bis zur nächsten
+manuellen Prüfung offline zu bleiben.
