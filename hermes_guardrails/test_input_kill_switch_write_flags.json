@@ -1,0 +1,1 @@
+{"agent": {"role": "kill_switch_system"}, "action": {"type": "write", "target_table": "system_flags", "risk": "low", "verified": null, "verifier_agent_id": null, "executor_agent_id": null, "human_approved": null}}

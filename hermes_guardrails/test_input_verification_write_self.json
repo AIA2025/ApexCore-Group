@@ -1,0 +1,1 @@
+{"agent": {"role": "verification_agent"}, "action": {"type": "write", "target_table": "verification_log", "risk": "low", "verified": null, "verifier_agent_id": "agent_x", "executor_agent_id": "agent_x", "human_approved": null}}

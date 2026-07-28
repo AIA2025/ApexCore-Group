@@ -1,0 +1,1 @@
+{"agent": {"role": "logging_pipeline"}, "action": {"type": "write", "target_table": "audit_trail", "risk": "low", "verified": null, "verifier_agent_id": null, "executor_agent_id": null, "human_approved": null}}
