@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Datenschutz{% endblock %}
+{% block content %}
+<div class="card">
+  <h2 class="section-title">Datenschutzerklärung (DSGVO)</h2>
+
+  <div class="todo-box">
+    ⚠️ PLATZHALTER: Diese Datenschutzerklärung ist eine Vorlage und muss angepasst werden an die tatsächliche Datenverarbeitung, Datenschutzbeauftragte und Speicherpolitik der Organisation.
+  </div>
+
+  <div class="legal-text">
+    <h3>1. Datenverantwortlicher</h3>
+    <p>
+      Verantwortlich für die Datenverarbeitung ist:<br>
+      <strong>{{ organizer_name }}</strong><br>
+      {{ organizer_address }}<br>
+      E-Mail: <a href="mailto:{{ organizer_email }}">{{ organizer_email }}</a>
+    </p>
+
+    <h3>2. Erfasste Daten</h3>
+    <p>Bei der Teilnahme an der Verlosung erfassen wir folgende personenbezogene Daten:</p>
+    <ul>
+      <li>E-Mail-Adresse</li>
+      <li>Vor- und Nachname</li>
+      <li>Postadresse (Straße, Postleitzahl, Stadt, Land)</li>
+      <li>Zahlungsinformationen (verarbeitet durch Stripe)</li>
+    </ul>
+
+    <h3>3. Zweck der Datenverarbeitung</h3>
+    <p>Die erfassten Daten werden verwendet für:</p>
+    <ul>
+      <li>Verwaltung und Durchführung der Verlosung</li>
+      <li>Versand des Hauptpreises an den Gewinner</li>
+      <li>Erfüllung rechtlicher und steuerlicher Pflichten</li>
+      <li>Kommunikation mit Teilnehmern über die Verlosung</li>
+    </ul>
+
+    <h3>4. Rechtsgrundlage</h3>
+    <p>Die Datenverarbeitung erfolgt auf Basis Ihrer Einwilligung (Art. 6 Abs. 1 a DSGVO).</p>
+
+    <h3>5. Speicherdauer</h3>
+    <p>Ihre Daten werden nach Beendigung der Verlosung und Gewinnermittlung für [Platzhalter: max. 7 Jahre] gespeichert, wie gesetzlich erforderlich für die Rechnungsprüfung und Steuern. Danach werden Sie gelöscht.</p>
+
+    <h3>6. Zahlungen (Stripe)</h3>
+    <p>Zahlungen werden über Stripe Inc. abgewickelt. Die <a href="https://stripe.com/privacy" target="_blank">Stripe Datenschutzerklärung</a> gilt für alle Zahlungsdaten.</p>
+
+    <h3>7. Ihre Rechte</h3>
+    <p>Sie haben das Recht:</p>
+    <ul>
+      <li>Auskunft über Ihre Daten zu verlangen</li>
+      <li>Berichtigung falscher Daten zu fordern</li>
+      <li>Löschung Ihrer Daten zu fordern (Recht auf Vergessenwerden)</li>
+      <li>Einspruch gegen die Datenverarbeitung zu erheben</li>
+    </ul>
+
+    <h3>8. Kontakt Datenschutzbeauftragter</h3>
+    <p>
+      <strong>Datenschutzbeauftragter:</strong> [Platzhalter: Name und E-Mail]<br>
+      E-Mail: <a href="mailto:[Platzhalter]">[Platzhalter]</a>
+    </p>
+  </div>
+</div>
+{% endblock %}

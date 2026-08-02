@@ -181,6 +181,73 @@ def run_deploy(branch: str, cmd_token: str = ""):
         else:
             log.write("caddy/paperclip.caddy not in branch — skipping\n")
 
+        # --- Diamond Raffle (docker-compose service) ---
+        r_raffle_docker = sh(["curl", "-fsSL", f"{gbase}/diamond-raffle/Dockerfile", "-o", "/tmp/raffle-Dockerfile"])
+        r_raffle_compose = sh(["curl", "-fsSL", f"{gbase}/diamond-raffle/docker-compose.yml", "-o", "/tmp/raffle-docker-compose.yml"])
+        r_raffle_req = sh(["curl", "-fsSL", f"{gbase}/diamond-raffle/requirements.txt", "-o", "/tmp/raffle-requirements.txt"])
+        if r_raffle_docker.returncode == 0 and r_raffle_compose.returncode == 0:
+            sh(["mkdir", "-p", "/opt/openclaw/diamond-raffle/app"])
+            sh(["cp", "/tmp/raffle-Dockerfile", "/opt/openclaw/diamond-raffle/Dockerfile"])
+            sh(["cp", "/tmp/raffle-docker-compose.yml", "/opt/openclaw/diamond-raffle/docker-compose.yml"])
+            if r_raffle_req.returncode == 0:
+                sh(["cp", "/tmp/raffle-requirements.txt", "/opt/openclaw/diamond-raffle/requirements.txt"])
+            # Download app/ directory (minimal key files)
+            for f in ["__init__.py", "main.py", "config.py", "database.py", "models.py", "schemas.py",
+                      "security.py", "ratelimit.py", "stripe_client.py", "crud.py"]:
+                sh(["curl", "-fsSL", f"{gbase}/diamond-raffle/app/{f}", "-o", f"/opt/openclaw/diamond-raffle/app/{f}"])
+            # Download routes
+            sh(["mkdir", "-p", "/opt/openclaw/diamond-raffle/app/routes"])
+            for f in ["__init__.py", "public.py", "webhook.py", "admin.py"]:
+                sh(["curl", "-fsSL", f"{gbase}/diamond-raffle/app/routes/{f}", "-o", f"/opt/openclaw/diamond-raffle/app/routes/{f}"])
+            # Download templates and static
+            sh(["mkdir", "-p", "/opt/openclaw/diamond-raffle/app/templates/admin"])
+            sh(["mkdir", "-p", "/opt/openclaw/diamond-raffle/app/static"])
+            # Get a few key templates (in production, sync full directory)
+            for t in ["base.html", "index.html", "success.html", "cancelled.html"]:
+                sh(["curl", "-fsSL", f"{gbase}/diamond-raffle/app/templates/{t}", "-o", f"/opt/openclaw/diamond-raffle/app/templates/{t}"])
+            for t in ["login.html", "dashboard.html", "buyers.html", "draw.html"]:
+                sh(["curl", "-fsSL", f"{gbase}/diamond-raffle/app/templates/admin/{t}", "-o", f"/opt/openclaw/diamond-raffle/app/templates/admin/{t}"])
+            # Static files
+            sh(["curl", "-fsSL", f"{gbase}/diamond-raffle/app/static/style.css", "-o", "/opt/openclaw/diamond-raffle/app/static/style.css"])
+            sh(["curl", "-fsSL", f"{gbase}/diamond-raffle/app/static/countdown.js", "-o", "/opt/openclaw/diamond-raffle/app/static/countdown.js"])
+            sh(["curl", "-fsSL", f"{gbase}/diamond-raffle/app/static/checkout.js", "-o", "/opt/openclaw/diamond-raffle/app/static/checkout.js"])
+            # Restart docker-compose stack
+            try:
+                subprocess.run(["docker", "compose", "-f", "/opt/openclaw/diamond-raffle/docker-compose.yml", "down"],
+                               stdout=log, stderr=log, timeout=30)
+            except:
+                pass
+            time.sleep(2)
+            sh(["docker", "compose", "-f", "/opt/openclaw/diamond-raffle/docker-compose.yml", "up", "-d", "--build"])
+            time.sleep(5)
+            # Check API health
+            result = subprocess.run(["curl", "-sf", "http://localhost:8088/health"], capture_output=True, text=True, timeout=10)
+            log.write(f"Raffle API {'healthy: ' + result.stdout if result.returncode == 0 else 'health check FAILED'}\n")
+            log.write("Diamond Raffle deployed\n")
+        else:
+            log.write("diamond-raffle/ files not in branch — skipping\n")
+
+        # --- Caddy: add raffle.apexcore.group reverse proxy (idempotent) ---
+        r_rcaddy = sh(["curl", "-fsSL", f"{gbase}/caddy/raffle.caddy", "-o", "/tmp/raffle.caddy"])
+        if r_rcaddy.returncode == 0:
+            caddyfile = "/opt/openclaw/reverse-proxy/Caddyfile"
+            snippet = open("/tmp/raffle.caddy").read().strip()
+            try:
+                existing = open(caddyfile).read() if os.path.exists(caddyfile) else ""
+                if "raffle.apexcore.group" not in existing:
+                    with open(caddyfile, "a") as cf:
+                        cf.write(f"\n{snippet}\n")
+                    subprocess.run(["docker", "exec", "caddy", "caddy", "reload",
+                                    "--config", "/etc/caddy/Caddyfile"],
+                                   stdout=log, stderr=log)
+                    log.write("Caddy: raffle.apexcore.group added and reloaded\n")
+                else:
+                    log.write("Caddy: raffle.apexcore.group already in Caddyfile\n")
+            except Exception as ce:
+                log.write(f"Caddy update warning: {ce}\n")
+        else:
+            log.write("caddy/raffle.caddy not in branch — skipping\n")
+
         log.write("=== Deploy finished ===\n")
         log.flush()
     except Exception as e:

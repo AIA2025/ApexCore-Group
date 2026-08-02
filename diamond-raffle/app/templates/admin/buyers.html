@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Käufer{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+  <h2 class="section-title" style="margin:0;">Käufer-Datenbank</h2>
+  <div style="display:flex;gap:.75rem;">
+    <a href="/admin/" class="btn-secondary">Dashboard</a>
+    <a href="/admin/export.csv" class="btn-secondary">CSV Export</a>
+  </div>
+</div>
+<div class="card">
+  <table class="data-table">
+    <thead><tr><th>Bezahlt am</th><th>Name</th><th>E-Mail</th><th>Adresse</th><th>Lose</th><th>Losnummern</th><th>Betrag</th></tr></thead>
+    <tbody>
+      {% for o in orders %}
+      <tr>
+        <td>{{ o.paid_at.strftime("%d.%m.%Y %H:%M") if o.paid_at else "–" }}</td>
+        <td>{{ o.buyer.full_name }}</td>
+        <td>{{ o.buyer.email }}</td>
+        <td>{{ o.buyer.street }}, {{ o.buyer.postal_code }} {{ o.buyer.city }}, {{ o.buyer.country }}</td>
+        <td>{{ o.quantity }}</td>
+        <td>{% for t in o.tickets|sort(attribute="ticket_number") %}<span class="ticket-pill">#{{ t.ticket_number }}</span>{% endfor %}</td>
+        <td>€{{ "%.2f"|format(o.amount_total_cents/100) }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="muted">Noch keine Käufer</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

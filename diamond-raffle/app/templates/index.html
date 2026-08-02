@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block title %}1,5 Karat Diamant Raffle{% endblock %}
+{% block content %}
+<div class="hero">
+  <div class="hero-tag">◇ Exklusiv</div>
+  <h1>1,5 Karat <span>Diamant</span> Verlosung</h1>
+  <p class="lead">750 Lose à €10 — Gewinner gezogen in {{ raffle.duration_days }} Tagen</p>
+</div>
+
+<div class="diamond-visual">
+  <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
+    <polygon points="60,10 90,50 60,100 30,50" fill="url(#diamondGrad)" stroke="#d4af37" stroke-width="2"/>
+    <defs>
+      <linearGradient id="diamondGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" style="stop-color:#f0d674;stop-opacity:1" />
+        <stop offset="100%" style="stop-color:#b8932c;stop-opacity:1" />
+      </linearGradient>
+    </defs>
+  </svg>
+</div>
+
+<div class="countdown" id="countdown">
+  <div class="cd-box"><div class="cd-val" id="cd-days">30</div><div class="cd-lbl">Tage</div></div>
+  <div class="cd-box"><div class="cd-val" id="cd-hours">00</div><div class="cd-lbl">Stunden</div></div>
+  <div class="cd-box"><div class="cd-val" id="cd-minutes">00</div><div class="cd-lbl">Minuten</div></div>
+  <div class="cd-box"><div class="cd-val" id="cd-seconds">00</div><div class="cd-lbl">Sekunden</div></div>
+</div>
+
+<div class="progress-wrap">
+  <div class="progress-track">
+    <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+  </div>
+  <div class="progress-stats">
+    <span><strong id="progress-sold">{{ sold }}</strong> Lose</span>
+    <span id="progress-pct">0%</span>
+    <span><strong>{{ raffle.total_tickets }}</strong> verfügbar</span>
+  </div>
+</div>
+
+<div class="card">
+  <h2 class="section-title">Diamant-Spezifikationen</h2>
+  <div class="specs-grid">
+    <div>
+      <div class="spec-lbl">Karate</div>
+      <div class="spec-val">{{ diamond_carat }}</div>
+    </div>
+    <div>
+      <div class="spec-lbl">Lose</div>
+      <div class="spec-val">750</div>
+    </div>
+    <div>
+      <div class="spec-lbl">Preis pro Los</div>
+      <div class="spec-val">€10</div>
+    </div>
+    <div>
+      <div class="spec-lbl">Gewinn</div>
+      <div class="spec-val">€7.500</div>
+    </div>
+  </div>
+  <p class="placeholder-note">[Platzhalter: Diamant-Zertifikat und Bilder müssen vor Verlosung eingefügt werden]</p>
+</div>
+
+{% if raffle.winner_ticket_number %}
+  <div class="card">
+    <div class="alert alert-success">
+      Gewinner-Los <strong>#{{ raffle.winner_ticket_number }}</strong> — gezogen am {{ raffle.winner_drawn_at.strftime("%d.%m.%Y %H:%M") }}
+    </div>
+  </div>
+{% elif raffle.status.value == "active" %}
+  <div class="card">
+    <h2 class="section-title">Lose kaufen</h2>
+    <form id="checkout-form">
+      <div class="field">
+        <label>E-Mail *</label>
+        <input type="email" name="email" required>
+      </div>
+      <div class="field">
+        <label>Name *</label>
+        <input type="text" name="full_name" required>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Straße *</label>
+          <input type="text" name="street" required>
+        </div>
+        <div class="field">
+          <label>PLZ *</label>
+          <input type="text" name="postal_code" required>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Stadt *</label>
+          <input type="text" name="city" required>
+        </div>
+        <div class="field">
+          <label>Land (2-Letter Code) *</label>
+          <input type="text" name="country" maxlength="2" required placeholder="DE">
+        </div>
+      </div>
+      <div class="field">
+        <label>Anzahl Lose (max 20)</label>
+        <div class="qty-row">
+          <button type="button" class="qty-btn" onclick="changeQty(-1)">−</button>
+          <input type="number" id="qty-input" name="quantity" value="1" min="1" max="20" required style="width:60px;text-align:center;">
+          <button type="button" class="qty-btn" onclick="changeQty(1)">+</button>
+          <div class="qty-total">€<span id="qty-total">10</span></div>
+        </div>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" name="accept_terms" required>
+        <span>Ich akzeptiere die <a href="/terms" target="_blank">Bedingungen</a> und <a href="/privacy" target="_blank">Datenschutz</a></span>
+      </div>
+      <button type="submit" class="btn-primary" id="checkout-btn">Zu Stripe Checkout</button>
+    </form>
+  </div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+const endsAtMs = {{ ends_at_ms }};
+const pricePerTicket = 1000; // cents
+
+function updateCountdown() {
+  const now = Date.now();
+  const remaining = Math.max(0, endsAtMs - now);
+  const days = Math.floor(remaining / 86400000);
+  const hours = Math.floor((remaining % 86400000) / 3600000);
+  const minutes = Math.floor((remaining % 3600000) / 60000);
+  const seconds = Math.floor((remaining % 60000) / 1000);
+
+  document.getElementById('cd-days').textContent = days;
+  document.getElementById('cd-hours').textContent = String(hours).padStart(2, '0');
+  document.getElementById('cd-minutes').textContent = String(minutes).padStart(2, '0');
+  document.getElementById('cd-seconds').textContent = String(seconds).padStart(2, '0');
+}
+
+async function updateProgress() {
+  try {
+    const res = await fetch('/api/raffle');
+    const data = await res.json();
+    const pct = Math.round((data.sold / data.total) * 100);
+    document.getElementById('progress-fill').style.width = pct + '%';
+    document.getElementById('progress-sold').textContent = data.sold;
+    document.getElementById('progress-pct').textContent = pct + '%';
+  } catch (e) {
+    console.error('Progress update failed:', e);
+  }
+}
+
+function changeQty(delta) {
+  const input = document.getElementById('qty-input');
+  let val = parseInt(input.value) + delta;
+  val = Math.max(1, Math.min(20, val));
+  input.value = val;
+  document.getElementById('qty-total').textContent = (val * 10);
+}
+
+document.getElementById('checkout-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('checkout-btn');
+  btn.disabled = true;
+
+  try {
+    const fd = new FormData(e.target);
+    const res = await fetch('/api/checkout', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        email: fd.get('email'),
+        full_name: fd.get('full_name'),
+        street: fd.get('street'),
+        postal_code: fd.get('postal_code'),
+        city: fd.get('city'),
+        country: fd.get('country'),
+        quantity: parseInt(fd.get('quantity')),
+        accept_terms: fd.get('accept_terms') === 'on',
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Fehler');
+    window.location.href = data.checkout_url;
+  } catch (err) {
+    alert('Fehler: ' + err.message);
+    btn.disabled = false;
+  }
+});
+
+updateCountdown();
+updateProgress();
+setInterval(updateCountdown, 1000);
+setInterval(updateProgress, 5000);
+</script>
+{% endblock %}

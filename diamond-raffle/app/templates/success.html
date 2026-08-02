@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Bestellung erfolgreich{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="alert alert-success" style="margin-bottom:1.5rem;">
+    Vielen Dank! Ihre Bestellung wird verarbeitet.
+  </div>
+  <h2 class="section-title">Bestellstatus</h2>
+  <p id="order-loading" style="color:var(--text-muted);">Bestelldaten werden abgerufen…</p>
+  <div id="order-result"></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const sessionId = new URLSearchParams(window.location.search).get('session_id');
+const maxAttempts = 15;
+let attempts = 0;
+
+async function checkOrder() {
+  try {
+    const res = await fetch(`/api/orders/${sessionId}`);
+    const data = await res.json();
+
+    if (data.status === 'paid') {
+      document.getElementById('order-loading').style.display = 'none';
+      document.getElementById('order-result').innerHTML = `
+        <div class="alert alert-success">
+          ✓ Zahlung bestätigt!<br>
+          <strong>${data.quantity}</strong> Los(e) — Nummern: ${data.tickets.join(', ')}
+        </div>
+        <p style="color:var(--text-muted);font-size:0.9rem;">Ein Bestätigungsemail wird in Kürze versendet.</p>
+      `;
+      return;
+    }
+  } catch (e) {}
+
+  attempts++;
+  if (attempts < maxAttempts) {
+    setTimeout(checkOrder, 2000);
+  } else {
+    document.getElementById('order-loading').innerHTML =
+      'Bestellstatus konnte nicht abgerufen werden. Bitte prüfen Sie Ihr Posteingang für eine Bestätigungsemail.';
+  }
+}
+
+if (sessionId) checkOrder();
+</script>
+{% endblock %}

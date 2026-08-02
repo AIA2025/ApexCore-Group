@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Impressum{% endblock %}
+{% block content %}
+<div class="card">
+  <h2 class="section-title">Impressum &amp; Anbieterkennzeichnung</h2>
+
+  <div class="todo-box">
+    ⚠️ PLATZHALTER: Das Impressum muss mit echten Angaben des Veranstalters gefüllt werden, einschließlich Handelsregisternummer, Umsatzsteuer-ID und Kontaktdaten einer verantwortlichen Person.
+  </div>
+
+  <div class="legal-text">
+    <h3>Betreiber dieser Website</h3>
+    <p>
+      <strong>{{ organizer_name }}</strong><br>
+      {{ organizer_address }}<br>
+      <strong>E-Mail:</strong> <a href="mailto:{{ organizer_email }}">{{ organizer_email }}</a>
+    </p>
+
+    <h3>Handelsregistereintrag</h3>
+    <p>
+      <strong>Registergericht:</strong> [Platzhalter: z.B. Amtsgericht Berlin-Mitte]<br>
+      <strong>Handelsregisternummer:</strong> [Platzhalter: z.B. HRB 123456]
+    </p>
+
+    <h3>Verantwortliche Person</h3>
+    <p>
+      <strong>Verantwortlicher:</strong> [Platzhalter: Name und Titel]<br>
+      <strong>Telefon:</strong> [Platzhalter: +49 XXX XXXXXXX]
+    </p>
+
+    <h3>Umsatzsteuer-Identifikationsnummer</h3>
+    <p><strong>USt-ID:</strong> [Platzhalter: DE123456789]</p>
+
+    <h3>Haftung für Inhalte</h3>
+    <p>Als Diensteanbieter sind wir gemäß § 7 Abs. 1 TMG verantwortlich für eigene Inhalte. Die Inhalte wurden mit Sorgfalt erstellt.</p>
+
+    <h3>Glücksspielerlaubnis</h3>
+    <p>
+      <strong>Erlaubniserteilende Behörde:</strong> [Platzhalter: z.B. Regierungspräsidium Stuttgart]<br>
+      <strong>Gültig bis:</strong> [Platzhalter: Datum]<br>
+      <strong>Erlaubnistyp:</strong> Gewerbliche Ausrichtung von Glücksspielen (Verlosung)
+    </p>
+  </div>
+</div>
+{% endblock %}
