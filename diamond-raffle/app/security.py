@@ -1,5 +1,5 @@
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from .database import get_db
 from .models import AdminUser
@@ -15,7 +15,7 @@ def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
 
 
-async def require_admin(request, db: Session = Depends(get_db)) -> AdminUser:
+async def require_admin(request: Request, db: Session = Depends(get_db)) -> AdminUser:
     admin_id = request.session.get("admin_id")
     if not admin_id:
         raise HTTPException(status_code=401, detail="Unauthorized")

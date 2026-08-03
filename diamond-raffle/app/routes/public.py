@@ -1,5 +1,5 @@
 from datetime import datetime
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -94,6 +94,12 @@ def start_checkout(payload: CheckoutRequest, request: Request, db: Session = Dep
     ip = client_ip(request)
     if not checkout_limiter.is_allowed(ip):
         return {"error": "Zu viele Anfragen — bitte warten"}, 429
+
+    if not is_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Zahlungen sind derzeit nicht verfügbar (Stripe nicht konfiguriert)"
+        )
 
     order, buyer, ticket_numbers = crud.reserve_tickets_and_create_order(db, payload)
     session = create_checkout_session(

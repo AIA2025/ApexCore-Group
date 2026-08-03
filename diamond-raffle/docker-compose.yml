@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   db:
     image: postgres:16-alpine
@@ -38,9 +36,9 @@ services:
       RAFFLE_DURATION_DAYS: ${RAFFLE_DURATION_DAYS:-30}
       MAX_TICKETS_PER_ORDER: ${MAX_TICKETS_PER_ORDER:-20}
       RESERVATION_MINUTES: ${RESERVATION_MINUTES:-30}
-      ORGANIZER_NAME: ${ORGANIZER_NAME:-[PLATZHALTER: Firmenname GmbH/d.o.o.]}
-      ORGANIZER_ADDRESS: ${ORGANIZER_ADDRESS:-[PLATZHALTER: Straße, PLZ Ort, Land]}
-      ORGANIZER_EMAIL: ${ORGANIZER_EMAIL:-[PLATZHALTER: kontakt@apexcore.group]}
+      ORGANIZER_NAME: "${ORGANIZER_NAME:-[PLATZHALTER: Firmenname GmbH/d.o.o.]}"
+      ORGANIZER_ADDRESS: "${ORGANIZER_ADDRESS:-[PLATZHALTER: Strasse, PLZ Ort, Land]}"
+      ORGANIZER_EMAIL: "${ORGANIZER_EMAIL:-[PLATZHALTER: kontakt@apexcore.group]}"
     ports:
       - "8088:8000"
     depends_on:

@@ -1,7 +1,7 @@
 import secrets
 from datetime import datetime, timedelta
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from .config import settings
 from .models import AdminUser, Buyer, Order, OrderStatus, Raffle, RaffleStatus, Ticket, TicketStatus
@@ -165,7 +165,7 @@ def get_available_count(db: Session) -> int:
 
 
 def get_revenue_cents(db: Session) -> int:
-    total = db.query(Order).filter(Order.status == OrderStatus.paid).with_entities(
-        db.func.sum(Order.amount_total_cents)
+    total = db.query(func.sum(Order.amount_total_cents)).filter(
+        Order.status == OrderStatus.paid
     ).scalar()
     return total or 0

@@ -13,11 +13,11 @@ from ..ratelimit import client_ip, login_limiter
 from ..schemas import AdminLoginRequest
 from ..security import hash_password, require_admin, verify_password
 
-router = APIRouter(prefix="/admin")
+router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 
 
-@router.get("/login", response_class=HTMLResponse)
+@router.get("/admin/login", response_class=HTMLResponse)
 def login_page(request: Request):
     return templates.TemplateResponse("admin/login.html", {"request": request})
 
@@ -42,7 +42,7 @@ async def admin_logout(request: Request):
     return {"ok": True}
 
 
-@router.get("/", response_class=HTMLResponse)
+@router.get("/admin/", response_class=HTMLResponse)
 async def admin_dashboard(request: Request, admin: AdminUser = Depends(require_admin), db: Session = Depends(get_db)):
     raffle = crud.get_raffle(db)
     crud.refresh_raffle_status(db, raffle)
@@ -63,7 +63,7 @@ async def admin_dashboard(request: Request, admin: AdminUser = Depends(require_a
     })
 
 
-@router.get("/buyers", response_class=HTMLResponse)
+@router.get("/admin/buyers", response_class=HTMLResponse)
 async def buyers_page(request: Request, admin: AdminUser = Depends(require_admin), db: Session = Depends(get_db)):
     orders = db.query(Order).filter(Order.status == OrderStatus.paid).order_by(Order.paid_at.desc()).all()
     return templates.TemplateResponse("admin/buyers.html", {
@@ -72,7 +72,7 @@ async def buyers_page(request: Request, admin: AdminUser = Depends(require_admin
     })
 
 
-@router.get("/draw", response_class=HTMLResponse)
+@router.get("/admin/draw", response_class=HTMLResponse)
 async def draw_page(request: Request, admin: AdminUser = Depends(require_admin), db: Session = Depends(get_db)):
     raffle = crud.get_raffle(db)
     crud.refresh_raffle_status(db, raffle)
@@ -113,7 +113,7 @@ async def extend_deadline(
     return {"ok": True, "new_end_time": raffle.ends_at.isoformat()}
 
 
-@router.get("/export.csv")
+@router.get("/admin/export.csv")
 async def export_csv(admin: AdminUser = Depends(require_admin), db: Session = Depends(get_db)):
     orders = db.query(Order).filter(Order.status == OrderStatus.paid).order_by(Order.paid_at.desc()).all()
 
