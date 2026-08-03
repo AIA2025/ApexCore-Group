@@ -1,0 +1,50 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: raffle-db
+    environment:
+      POSTGRES_USER: raffle
+      POSTGRES_PASSWORD: raffle
+      POSTGRES_DB: raffle
+    ports:
+      - "5432:5432"
+    volumes:
+      - raffle_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U raffle -d raffle"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    container_name: raffle-api
+    environment:
+      DATABASE_URL: postgresql+psycopg2://raffle:raffle@db:5432/raffle
+      BASE_URL: http://localhost:8088
+      SESSION_SECRET: ${SESSION_SECRET:-change-me-in-production}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@apexcore.group}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      RAFFLE_TITLE: ${RAFFLE_TITLE:-1,5 Karat Diamant Raffle}
+      DIAMOND_CARAT: ${DIAMOND_CARAT:-1.5}
+      RAFFLE_PRICE_CENTS: ${RAFFLE_PRICE_CENTS:-1000}
+      RAFFLE_CURRENCY: ${RAFFLE_CURRENCY:-eur}
+      RAFFLE_TOTAL_TICKETS: ${RAFFLE_TOTAL_TICKETS:-750}
+      RAFFLE_DURATION_DAYS: ${RAFFLE_DURATION_DAYS:-30}
+      MAX_TICKETS_PER_ORDER: ${MAX_TICKETS_PER_ORDER:-20}
+      RESERVATION_MINUTES: ${RESERVATION_MINUTES:-30}
+      ORGANIZER_NAME: "${ORGANIZER_NAME:-[PLATZHALTER: Firmenname GmbH/d.o.o.]}"
+      ORGANIZER_ADDRESS: "${ORGANIZER_ADDRESS:-[PLATZHALTER: Strasse, PLZ Ort, Land]}"
+      ORGANIZER_EMAIL: "${ORGANIZER_EMAIL:-[PLATZHALTER: kontakt@apexcore.group]}"
+    ports:
+      - "8088:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  raffle_data:

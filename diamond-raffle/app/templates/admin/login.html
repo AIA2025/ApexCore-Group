@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Admin Login{% endblock %}
+{% block content %}
+<div style="max-width:400px;margin:3rem auto;">
+  <div class="card">
+    <h2 class="section-title" style="text-align:center;margin-bottom:1.5rem;">Admin Panel</h2>
+    <form id="login-form">
+      <div class="field">
+        <label>E-Mail</label>
+        <input type="email" name="email" required>
+      </div>
+      <div class="field">
+        <label>Passwort</label>
+        <input type="password" name="password" required>
+      </div>
+      <button type="submit" class="btn-primary">Anmelden</button>
+    </form>
+    <p id="error-msg" style="color:var(--red);margin-top:1rem;font-size:0.9rem;display:none;"></p>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  try {
+    const res = await fetch('/api/admin/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        email: fd.get('email'),
+        password: fd.get('password'),
+      })
+    });
+    if (!res.ok) throw new Error('Ungültige Anmeldedaten');
+    window.location.href = '/admin';
+  } catch (err) {
+    const msg = document.getElementById('error-msg');
+    msg.textContent = err.message;
+    msg.style.display = 'block';
+  }
+});
+</script>
+{% endblock %}

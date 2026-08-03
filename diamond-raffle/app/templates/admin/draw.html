@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Auslosung{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+  <h2 class="section-title" style="margin:0;">Auslosung</h2>
+  <a href="/admin/" class="btn-secondary">Dashboard</a>
+</div>
+
+<div class="card">
+  <p class="muted">Status: <strong>{{ raffle.status.value }}</strong> &middot; Verkaufte Lose: <strong>{{ sold }}</strong> &middot; Ende: <strong>{{ raffle.ends_at.strftime("%d.%m.%Y %H:%M") }}</strong></p>
+
+  {% if raffle.winner_ticket_number %}
+    <div class="alert alert-success" style="margin-top:1rem;">
+      Gewinner-Los <strong>#{{ raffle.winner_ticket_number }}</strong> — gezogen am {{ raffle.winner_drawn_at.strftime("%d.%m.%Y %H:%M") }}
+    </div>
+  {% elif raffle.status.value == "active" %}
+    <div class="alert" style="margin-top:1rem;background:rgba(212,175,55,0.1);border:1px solid rgba(212,175,55,0.3);color:#f0d674;">
+      Die Verlosung läuft noch — Auslosung ist erst nach Verkaufsende oder Ausverkauf möglich.
+    </div>
+  {% else %}
+    <div id="draw-area" style="margin-top:1.25rem;">
+      <button class="btn-primary btn-danger" style="width:auto;padding:.85rem 1.75rem;" onclick="drawWinner()" id="draw-btn">
+        Jetzt final auslosen ({{ sold }} gültige Lose)
+      </button>
+      <p class="placeholder-note" style="margin-top:.75rem;">Diese Aktion ist endgültig und kann nicht rückgängig gemacht werden.</p>
+    </div>
+    <div id="draw-result"></div>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function drawWinner() {
+  if (!confirm("Gewinner jetzt unwiderruflich auslosen?")) return;
+  const btn = document.getElementById("draw-btn");
+  btn.disabled = true;
+  try {
+    const r = await fetch("/api/admin/draw", { method: "POST" });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || "Fehler bei der Auslosung");
+    document.getElementById("draw-area").style.display = "none";
+    document.getElementById("draw-result").innerHTML = `
+      <div class="alert alert-success">
+        Gewinner-Los <strong>#${d.ticket_number}</strong> — ${d.buyer_name} (${d.buyer_email})
+      </div>`;
+  } catch (err) {
+    alert(err.message);
+    btn.disabled = false;
+  }
+}
+</script>
+{% endblock %}

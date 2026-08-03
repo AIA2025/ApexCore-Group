@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard{% endblock %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+  <h2 class="section-title" style="margin:0;">Admin Dashboard</h2>
+  <div style="display:flex;gap:.75rem;">
+    <a href="/admin/buyers" class="btn-secondary">Käufer</a>
+    <a href="/admin/draw" class="btn-secondary">Auslosung</a>
+    <a href="/admin/export.csv" class="btn-secondary">CSV Export</a>
+    <button class="btn-secondary" onclick="logout()">Abmelden</button>
+  </div>
+</div>
+
+<div class="stat-grid">
+  <div class="stat-card"><div class="stat-lbl">Status</div><div class="stat-val" style="font-size:1.1rem;">{{ raffle.status.value }}</div></div>
+  <div class="stat-card"><div class="stat-lbl">Verkauft</div><div class="stat-val">{{ sold }} / {{ raffle.total_tickets }}</div></div>
+  <div class="stat-card"><div class="stat-lbl">Reserviert</div><div class="stat-val">{{ reserved }}</div></div>
+  <div class="stat-card"><div class="stat-lbl">Umsatz</div><div class="stat-val">€{{ "%.2f"|format(revenue_cents/100) }}</div></div>
+  <div class="stat-card"><div class="stat-lbl">Ende</div><div class="stat-val" style="font-size:1rem;">{{ raffle.ends_at.strftime("%d.%m.%Y %H:%M") }}</div></div>
+</div>
+
+<div class="card">
+  <h2 class="section-title">Letzte bezahlte Bestellungen</h2>
+  <table class="data-table">
+    <thead><tr><th>Datum</th><th>Käufer</th><th>E-Mail</th><th>Lose</th><th>Betrag</th></tr></thead>
+    <tbody>
+      {% for o in recent_orders %}
+      <tr>
+        <td>{{ o.paid_at.strftime("%d.%m.%Y %H:%M") if o.paid_at else "–" }}</td>
+        <td>{{ o.buyer.full_name }}</td>
+        <td>{{ o.buyer.email }}</td>
+        <td>{{ o.quantity }}</td>
+        <td>€{{ "%.2f"|format(o.amount_total_cents/100) }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="muted">Noch keine bezahlten Bestellungen</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+async function logout() {
+  await fetch("/api/admin/logout", { method: "POST" });
+  window.location.href = "/admin/login";
+}
+</script>
+{% endblock %}
