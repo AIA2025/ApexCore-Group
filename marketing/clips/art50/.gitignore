@@ -1,0 +1,5 @@
+# Schriften werden per ./fetch_fonts.sh geladen (SIL OFL 1.1), nicht versioniert
+fonts/
+
+# Einzelframes aus --still sind Wegwerf-Artefakte
+out/*.png
