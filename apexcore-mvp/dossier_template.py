@@ -76,6 +76,21 @@ class DossierContext:
     company_address: str = ""
     score: float | None = None
     risk: str = ""  # "HOCH" | "MITTEL" | "NIEDRIG"
+    # Added per Qualitäts-Check 2026-08-27: the dossier previously never stated
+    # *how* the target was accessed. Every caller in this repo (main.py's
+    # forensic_scrape()) only ever does an unauthenticated page.goto() -- no
+    # login, no session/cookie injection, no paywall bypass exists anywhere in
+    # this codebase -- but that fact was implicit in the code, never an
+    # auditable claim inside the dossier itself. Make it explicit and put it
+    # directly in the Sachverhalt so it's part of the evidentiary record, not
+    # something a reader has to take on faith. Override this string if a
+    # future caller ever captures content some other way -- never leave the
+    # default standing for a scan it doesn't actually describe.
+    access_method: str = (
+        "Ausschließlich öffentlich zugängliche Inhalte ohne vorherige Anmeldung "
+        "abgerufen (kein Login, keine Zugangsdaten, keine Umgehung von Zugriffs- "
+        "oder Zahlschranken)."
+    )
 
 
 def _styles():
@@ -182,6 +197,7 @@ def _section_sachverhalt(ss, ctx: DossierContext, sachverhalt_prosa: str, eviden
         f"Untersuchung vom {ctx.prufdatum} — geprüfte URL: {escape(ctx.url or '[nicht übermittelt]')}",
         ss["BodySmall"],
     ))
+    flow.append(Paragraph(f"Zugriffsart: {escape(ctx.access_method)}", ss["BodySmall"]))
     flow.append(Spacer(1, 4 * mm))
     for para in sachverhalt_prosa.split("\n\n"):
         if para.strip():
@@ -610,6 +626,8 @@ def render_dossier_markdown(
     w("## 1. Sachverhalt für den anwaltlichen Schriftsatz")
     w("")
     w(f"Untersuchung vom {ctx.prufdatum} — geprüfte URL: {ctx.url or '[nicht übermittelt]'}")
+    w("")
+    w(f"**Zugriffsart:** {ctx.access_method}")
     w("")
     w(review.sachverhalt_prosa)
     w("")
