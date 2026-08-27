@@ -178,6 +178,21 @@ def test_mandate_missing_fields():
     assert "Passivlegitimation" in missing
 
 
+def test_access_method_stated_in_sachverhalt():
+    # Regression test for the Qualitäts-Check finding (2026-08-27): the
+    # dossier used to never say *how* the target was accessed. It must now
+    # appear as an explicit, auditable statement in both export formats,
+    # not just be true of the scraper code by omission.
+    ctx = DossierContext(dossier_id="TEST-ACCESS", url="https://example.test", prufdatum="01.01.2026", company_name="Testfirma GmbH")
+    assert "kein Login" in ctx.access_method
+    review = FableReviewResult(sachverhalt_prosa="Testtext.", subsumtion_prosa="Testtext.")
+    with tempfile.TemporaryDirectory() as tmp:
+        out_md = render_dossier_markdown(Path(tmp) / "out.md", ctx, [], [], review, [])
+        assert "Zugriffsart" in out_md.read_text(encoding="utf-8")
+        out_pdf = render_dossier(Path(tmp) / "out.pdf", ctx, [], [], review, [], annotated_images=[])
+        assert out_pdf.exists()
+
+
 def test_evidence_inline_ref_and_annex_row():
     ev = EvidenceItem(3, "datei.pdf", "Beschreibung", page_ref="2", quality="Mittel")
     assert ev.label == "Anlage 3"

@@ -22,7 +22,12 @@ LABEL_FG = (255, 255, 255, 255)
 class Annotation:
     box: tuple[int, int, int, int]  # x0, y0, x1, y1 in source-image pixel coords
     label: str
-    kind: str = "violation"  # "violation" (found) | "missing" (expected but absent)
+    # No default per Qualitäts-Check 2026-08-27: this used to default to
+    # "violation", which meant every annotation silently asserted a Verstoß
+    # unless a caller remembered to override it -- the same premature legal
+    # conclusion the dossier template is otherwise careful to avoid before
+    # Kanzlei review. Callers must now choose explicitly.
+    kind: str  # "violation" (found) | "missing" (expected but absent)
 
 
 def _load_font(size: int) -> ImageFont.ImageFont:

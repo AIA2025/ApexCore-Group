@@ -110,8 +110,13 @@ async def forensic_scrape(url: str, scan_id: str):
             await page.screenshot(path=str(screenshot_path), full_page=True)
         except Exception as e:
             html = f"<html><body>Capture error: {e}</body></html>"
-            try: await page.screenshot(path=str(screenshot_path))
-            except Exception: pass
+            try:
+                await page.screenshot(path=str(screenshot_path))
+            except Exception as fallback_e:
+                # Both the real capture and the fallback screenshot failed --
+                # don't swallow that silently, or a reader of the finished
+                # dossier has no way to know screenshot_path may not exist.
+                print(f"forensic_scrape[{scan_id}]: fallback screenshot also failed: {fallback_e}")
         finally: await browser.close()
     return screenshot_path, html, timestamp
 
@@ -178,10 +183,20 @@ def assemble_pdf(scan_id, url, screenshot_path, scores, company, timestamp):
         dossier_id=scan_id.upper(), url=url, prufdatum=timestamp,
         company_name=company.get("name", "Unbekannt"), company_address=company.get("address", ""),
         score=scores["confidence"], risk=risk,
+        # DossierContext's default already states this, but set it explicitly
+        # here too so it stays correct and visible at the one call site that
+        # actually performs the capture (forensic_scrape() above never logs
+        # in, never injects a session/cookie -- if that ever changes, this
+        # line is what needs updating, not just the dataclass default).
+        access_method=(
+            "Ausschließlich öffentlich zugängliche Inhalte ohne vorherige Anmeldung "
+            "abgerufen (kein Login, keine Zugangsdaten, keine Umgehung von Zugriffs- "
+            "oder Zahlschranken)."
+        ),
     )
     chronologie = [
         f"[{timestamp}] Scan initiiert — ApexCore System",
-        "Playwright-Browser gestartet, Screenshot erstellt (1920x1080)",
+        "Playwright-Browser gestartet (nicht-authentifizierter Context, kein Login), Screenshot erstellt (1920x1080)",
         "HTML archiviert, SHA-256 Hash berechnet",
         "Detection Ensemble durchgeführt (MVP-Mock, unverifiziert)",
         "PDF-Dossier erstellt",
